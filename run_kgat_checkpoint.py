@@ -17,18 +17,17 @@ from recbole.utils import (
 )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
 
     config, model, dataset, train_data, valid_data, test_data = load_data_and_model(
-    model_file='/root/RecBole-master/saved/KGAT-Nov-28-2024_20-24-26.pth',
-)
-    
+        model_file="/root/RecBole-master/saved/KGAT-Nov-28-2024_20-24-26.pth",
+    )
+
     # configurations initialization
     # config = Config(model='KGAT', dataset='ml-1m')
 
-    
     # init random seed
-    init_seed(config['seed'], config['reproducibility'])
+    init_seed(config["seed"], config["reproducibility"])
 
     # logger initialization
     init_logger(config)
@@ -45,14 +44,14 @@ if __name__ == '__main__':
     # train_data, valid_data, test_data = data_preparation(config, dataset)
 
     # model loading and initialization
-    #model = BPR(config, train_data.dataset).to(config['device'])
+    # model = BPR(config, train_data.dataset).to(config['device'])
     logger.info(model)
 
     # trainer loading and initialization
-    trainer = get_trainer(config['MODEL_TYPE'], config['model'])(config, model)
-    
+    trainer = get_trainer(config["MODEL_TYPE"], config["model"])(config, model)
+
     # resume from break point
-    checkpoint_file = '/root/RecBole-master/saved/KGAT-Nov-28-2024_20-24-26.pth'
+    checkpoint_file = "/root/RecBole-master/saved/KGAT-Nov-28-2024_20-24-26.pth"
     trainer.resume_checkpoint(checkpoint_file)
 
     # model training

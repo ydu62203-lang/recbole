@@ -48,15 +48,12 @@ class N3(Regularizer):
         """Regularized complex embeddings https://arxiv.org/pdf/1806.07297.pdf"""
         norm = 0
         for f in factors:
-            norm += self.weight * torch.sum(
-                torch.abs(f) ** 3
-            )
+            norm += self.weight * torch.sum(torch.abs(f) ** 3)
         return norm / factors[0].shape[0]
 
 
 class Aggregator(nn.Module):
-    """ GNN Aggregator layer
-    """
+    """GNN Aggregator layer"""
 
     def __init__(self, input_dim, output_dim, dropout, aggregator_type):
         super(Aggregator, self).__init__()
@@ -67,11 +64,11 @@ class Aggregator(nn.Module):
 
         self.message_dropout = nn.Dropout(dropout)
 
-        if self.aggregator_type == 'gcn':
+        if self.aggregator_type == "gcn":
             self.W = nn.Linear(self.input_dim, self.output_dim)
-        elif self.aggregator_type == 'graphsage':
+        elif self.aggregator_type == "graphsage":
             self.W = nn.Linear(self.input_dim * 2, self.output_dim)
-        elif self.aggregator_type == 'bi':
+        elif self.aggregator_type == "bi":
             self.W1 = nn.Linear(self.input_dim, self.output_dim, dtype=torch.float64)
             self.W2 = nn.Linear(self.input_dim, self.output_dim, dtype=torch.float64)
         else:
@@ -81,16 +78,26 @@ class Aggregator(nn.Module):
 
     def forward(self, norm_matrix, ego_embeddings):
 
-        norm_matrix = norm_matrix.to(torch.float32) if norm_matrix.dtype == torch.float64 else norm_matrix
-        ego_embeddings = ego_embeddings.to(torch.float32) if ego_embeddings.dtype == torch.float64 else ego_embeddings
+        norm_matrix = (
+            norm_matrix.to(torch.float32)
+            if norm_matrix.dtype == torch.float64
+            else norm_matrix
+        )
+        ego_embeddings = (
+            ego_embeddings.to(torch.float32)
+            if ego_embeddings.dtype == torch.float64
+            else ego_embeddings
+        )
 
         side_embeddings = torch.sparse.mm(norm_matrix, ego_embeddings)
 
-        if self.aggregator_type == 'gcn':
+        if self.aggregator_type == "gcn":
             ego_embeddings = self.activation(self.W(ego_embeddings + side_embeddings))
-        elif self.aggregator_type == 'graphsage':
-            ego_embeddings = self.activation(self.W(torch.cat([ego_embeddings, side_embeddings], dim=1)))
-        elif self.aggregator_type == 'bi':
+        elif self.aggregator_type == "graphsage":
+            ego_embeddings = self.activation(
+                self.W(torch.cat([ego_embeddings, side_embeddings], dim=1))
+            )
+        elif self.aggregator_type == "bi":
 
             # 在模型定义或forward函数内部，确保ego_embeddings是double类型
             ego_embeddings = ego_embeddings.to(torch.double)
@@ -120,22 +127,32 @@ class KGAT(KnowledgeRecommender):
         super(KGAT, self).__init__(config, dataset)
 
         # load dataset info
-        self.ckg = dataset.ckg_graph(form='dgl', value_field='relation_id')
-        self.all_hs = torch.LongTensor(dataset.ckg_graph(form='coo', value_field='relation_id').row).to(self.device)
-        self.all_ts = torch.LongTensor(dataset.ckg_graph(form='coo', value_field='relation_id').col).to(self.device)
-        self.all_rs = torch.LongTensor(dataset.ckg_graph(form='coo', value_field='relation_id').data).to(self.device)
-        self.matrix_size = torch.Size([self.n_users + self.n_entities, self.n_users + self.n_entities])
+        self.ckg = dataset.ckg_graph(form="dgl", value_field="relation_id")
+        self.all_hs = torch.LongTensor(
+            dataset.ckg_graph(form="coo", value_field="relation_id").row
+        ).to(self.device)
+        self.all_ts = torch.LongTensor(
+            dataset.ckg_graph(form="coo", value_field="relation_id").col
+        ).to(self.device)
+        self.all_rs = torch.LongTensor(
+            dataset.ckg_graph(form="coo", value_field="relation_id").data
+        ).to(self.device)
+        self.matrix_size = torch.Size(
+            [self.n_users + self.n_entities, self.n_users + self.n_entities]
+        )
 
         # load parameters info
-        self.embedding_size = config['embedding_size']
-        self.kg_embedding_size = config['kg_embedding_size']
-        self.layers = [self.embedding_size] + config['layers']
-        self.aggregator_type = config['aggregator_type']
-        self.mess_dropout = config['mess_dropout']
-        self.reg_weight = config['reg_weight']
+        self.embedding_size = config["embedding_size"]
+        self.kg_embedding_size = config["kg_embedding_size"]
+        self.layers = [self.embedding_size] + config["layers"]
+        self.aggregator_type = config["aggregator_type"]
+        self.mess_dropout = config["mess_dropout"]
+        self.reg_weight = config["reg_weight"]
 
         # generate intermediate data
-        self.A_in = self.init_graph()  # init the attention matrix by the structure of ckg
+        self.A_in = (
+            self.init_graph()
+        )  # init the attention matrix by the structure of ckg
         self.A_in_1 = self.A_in
         self.A_in_2 = self.A_in
         self.A_in_3 = self.A_in
@@ -144,10 +161,22 @@ class KGAT(KnowledgeRecommender):
         self.projection_head = torch.nn.ModuleList()
         inner_size = sum(self.layers)
         print("inner size:", inner_size)
-        self.projection_head.append(torch.nn.Linear(inner_size, inner_size * 4, bias=False, dtype=torch.float64))
-        self.projection_head.append(torch.nn.BatchNorm1d(inner_size * 4, eps=1e-12, affine=affine, dtype=torch.float64))
-        self.projection_head.append(torch.nn.Linear(inner_size * 4, inner_size, bias=False, dtype=torch.float64))
-        self.projection_head.append(torch.nn.BatchNorm1d(inner_size, eps=1e-12, affine=affine, dtype=torch.float64))
+        self.projection_head.append(
+            torch.nn.Linear(inner_size, inner_size * 4, bias=False, dtype=torch.float64)
+        )
+        self.projection_head.append(
+            torch.nn.BatchNorm1d(
+                inner_size * 4, eps=1e-12, affine=affine, dtype=torch.float64
+            )
+        )
+        self.projection_head.append(
+            torch.nn.Linear(inner_size * 4, inner_size, bias=False, dtype=torch.float64)
+        )
+        self.projection_head.append(
+            torch.nn.BatchNorm1d(
+                inner_size, eps=1e-12, affine=affine, dtype=torch.float64
+            )
+        )
         self.mode = 0
 
         # define layers and loss
@@ -155,10 +184,18 @@ class KGAT(KnowledgeRecommender):
         # self.user_embedding1 = nn.Embedding(self.n_users, self.embedding_size)
         self.entity_embedding = nn.Embedding(self.n_entities, self.embedding_size)
         self.relation_embedding = nn.Embedding(self.n_relations, self.kg_embedding_size)
-        self.trans_w = nn.Embedding(self.n_relations, self.embedding_size * self.kg_embedding_size)
+        self.trans_w = nn.Embedding(
+            self.n_relations, self.embedding_size * self.kg_embedding_size
+        )
         self.aggregator_layers = nn.ModuleList()
-        for idx, (input_dim, output_dim) in enumerate(zip(self.layers[:-1], self.layers[1:])):
-            self.aggregator_layers.append(Aggregator(input_dim, output_dim, self.mess_dropout, self.aggregator_type))
+        for idx, (input_dim, output_dim) in enumerate(
+            zip(self.layers[:-1], self.layers[1:])
+        ):
+            self.aggregator_layers.append(
+                Aggregator(
+                    input_dim, output_dim, self.mess_dropout, self.aggregator_type
+                )
+            )
         self.tanh = nn.Tanh()
         self.mf_loss = BPRLoss()
         self.reg_loss = EmbLoss()
@@ -168,7 +205,7 @@ class KGAT(KnowledgeRecommender):
 
         # parameters initialization
         self.apply(xavier_normal_initialization)
-        self.other_parameter_name = ['restore_user_e', 'restore_entity_e']
+        self.other_parameter_name = ["restore_user_e", "restore_entity_e"]
 
         # 添加参数
 
@@ -189,13 +226,19 @@ class KGAT(KnowledgeRecommender):
         self.bt.weight.data = torch.zeros((self.n_entities, 1), dtype=self.data_type)
         self.new_bt = nn.Embedding(self.n_entities, 1)
         self.new_bh = nn.Embedding(self.n_entities, 1)
-        self.new_bh.weight.data = torch.zeros((self.n_entities, 1), dtype=self.data_type)
-        self.new_bt.weight.data = torch.zeros((self.n_entities, 1), dtype=self.data_type)
+        self.new_bh.weight.data = torch.zeros(
+            (self.n_entities, 1), dtype=self.data_type
+        )
+        self.new_bt.weight.data = torch.zeros(
+            (self.n_entities, 1), dtype=self.data_type
+        )
 
-        self.entity_embedding.weight.data = self.init_size * torch.randn((self.sizes[0], self.rank),
-                                                                         dtype=self.data_type)
-        self.relation_embedding.weight.data = self.init_size * torch.randn((self.sizes[1], self.rank),
-                                                                           dtype=self.data_type)
+        self.entity_embedding.weight.data = self.init_size * torch.randn(
+            (self.sizes[0], self.rank), dtype=self.data_type
+        )
+        self.relation_embedding.weight.data = self.init_size * torch.randn(
+            (self.sizes[1], self.rank), dtype=self.data_type
+        )
         # self.rel_diag = nn.Embedding(self.sizes[1], self.rank)
         # self.rel_diag.weight.data = 2 * torch.rand((self.sizes[1], self.rank), dtype=self.data_type) - 1.0
         # self.multi_c = args.multi_c
@@ -204,40 +247,54 @@ class KGAT(KnowledgeRecommender):
         self.c = nn.Parameter(c_init, requires_grad=True)
 
         self.rel_diag = nn.Embedding(self.sizes[1], 2 * self.sizes[1] * self.rank)
-        self.rel_diag.weight.data = 2 * torch.rand((self.sizes[1], 2 * self.rank), dtype=self.data_type) - 1.0
+        self.rel_diag.weight.data = (
+            2 * torch.rand((self.sizes[1], 2 * self.rank), dtype=self.data_type) - 1.0
+        )
         self.context_vec = nn.Embedding(self.sizes[1], self.rank)
-        self.context_vec.weight.data = self.init_size * torch.randn((self.sizes[1], self.rank), dtype=self.data_type)
+        self.context_vec.weight.data = self.init_size * torch.randn(
+            (self.sizes[1], self.rank), dtype=self.data_type
+        )
         self.act = nn.Softmax(dim=1)
 
         self.regularizer = N3(weight=1.0)
 
         if torch.cuda.is_available():
-            self.device = torch.device('cuda:0')
+            self.device = torch.device("cuda:0")
         else:
-            self.device = torch.device('cpu')
+            self.device = torch.device("cpu")
 
         self.to(self.device)
 
-        self.scale = torch.Tensor([1. / np.sqrt(self.rank)]).double().to(self.device)
-        self.bias = 'learn'
+        self.scale = torch.Tensor([1.0 / np.sqrt(self.rank)]).double().to(self.device)
+        self.bias = "learn"
 
         # 添加参数
         # self.data_type = torch.float
         self.rank = self.embedding_size
-        self.noise_u = torch.randn((self.n_users, self.rank * 2), dtype=self.data_type).to(self.device)
-        self.noise_p = torch.randn((self.n_entities, self.rank * 2), dtype=self.data_type).to(self.device)
+        self.noise_u = torch.randn(
+            (self.n_users, self.rank * 2), dtype=self.data_type
+        ).to(self.device)
+        self.noise_p = torch.randn(
+            (self.n_entities, self.rank * 2), dtype=self.data_type
+        ).to(self.device)
 
-        self.noise_u_cts1 = torch.randn((self.n_users, self.rank * 2), dtype=self.data_type).to(self.device)
-        self.noise_u_cts2 = torch.randn((self.n_users, self.rank * 2), dtype=self.data_type).to(self.device)
+        self.noise_u_cts1 = torch.randn(
+            (self.n_users, self.rank * 2), dtype=self.data_type
+        ).to(self.device)
+        self.noise_u_cts2 = torch.randn(
+            (self.n_users, self.rank * 2), dtype=self.data_type
+        ).to(self.device)
 
-        self.noise_e_cts1 = torch.randn((self.n_entities, self.rank * 2), dtype=self.data_type).to(self.device)
-        self.noise_e_cts2 = torch.randn((self.n_entities, self.rank * 2), dtype=self.data_type).to(self.device)
+        self.noise_e_cts1 = torch.randn(
+            (self.n_entities, self.rank * 2), dtype=self.data_type
+        ).to(self.device)
+        self.noise_e_cts2 = torch.randn(
+            (self.n_entities, self.rank * 2), dtype=self.data_type
+        ).to(self.device)
 
         self.noise_norm = 0.01
 
         self.global_counter = 0
-
-
 
     def set_seed(self, seed):
         torch.manual_seed(seed)
@@ -257,8 +314,8 @@ class KGAT(KnowledgeRecommender):
         shuffled_indices = all_indices[torch.randperm(total_size)]
 
         ui_rand_samples_1 = shuffled_indices[:subset_size]
-        ui_rand_samples_2 = shuffled_indices[subset_size:2 * subset_size]
-        ui_rand_samples_3 = shuffled_indices[2 * subset_size:3 * subset_size]
+        ui_rand_samples_2 = shuffled_indices[subset_size : 2 * subset_size]
+        ui_rand_samples_3 = shuffled_indices[2 * subset_size : 3 * subset_size]
 
         return ui_rand_samples_1, ui_rand_samples_2, ui_rand_samples_3
 
@@ -269,6 +326,7 @@ class KGAT(KnowledgeRecommender):
             torch.sparse.FloatTensor: Sparse tensor of the attention matrix
         """
         import dgl
+
         adj_list = []
 
         for rel_type in range(1, self.n_relations, 1):
@@ -317,7 +375,9 @@ class KGAT(KnowledgeRecommender):
             norm_embeddings = F.normalize(ego_embeddings, p=2, dim=1)
             embeddings_list.append(norm_embeddings)
         kgat_all_embeddings = torch.cat(embeddings_list, dim=1)
-        user_all_embeddings, entity_all_embeddings = torch.split(kgat_all_embeddings, [self.n_users, self.n_entities])
+        user_all_embeddings, entity_all_embeddings = torch.split(
+            kgat_all_embeddings, [self.n_users, self.n_entities]
+        )
         return user_all_embeddings, entity_all_embeddings
 
     def forward_2(self):
@@ -328,7 +388,9 @@ class KGAT(KnowledgeRecommender):
             norm_embeddings = F.normalize(ego_embeddings, p=2, dim=1)
             embeddings_list.append(norm_embeddings)
         kgat_all_embeddings = torch.cat(embeddings_list, dim=1)
-        user_all_embeddings, entity_all_embeddings = torch.split(kgat_all_embeddings, [self.n_users, self.n_entities])
+        user_all_embeddings, entity_all_embeddings = torch.split(
+            kgat_all_embeddings, [self.n_users, self.n_entities]
+        )
         return user_all_embeddings, entity_all_embeddings
 
     def forward_3(self):
@@ -339,13 +401,19 @@ class KGAT(KnowledgeRecommender):
             norm_embeddings = F.normalize(ego_embeddings, p=2, dim=1)
             embeddings_list.append(norm_embeddings)
         kgat_all_embeddings = torch.cat(embeddings_list, dim=1)
-        user_all_embeddings, entity_all_embeddings = torch.split(kgat_all_embeddings, [self.n_users, self.n_entities])
+        user_all_embeddings, entity_all_embeddings = torch.split(
+            kgat_all_embeddings, [self.n_users, self.n_entities]
+        )
         return user_all_embeddings, entity_all_embeddings
 
     def forward_1_noise(self):
         ego_embeddings = self._get_ego_embeddings()
-        x=0.01 + torch.zeros(ego_embeddings.shape[0], ego_embeddings.shape[1],dtype=self.data_type).to(ego_embeddings.device) 
-        noise =torch.normal(mean=torch.tensor([0.0]).to(ego_embeddings.device),std=x).to(ego_embeddings.device)
+        x = 0.01 + torch.zeros(
+            ego_embeddings.shape[0], ego_embeddings.shape[1], dtype=self.data_type
+        ).to(ego_embeddings.device)
+        noise = torch.normal(
+            mean=torch.tensor([0.0]).to(ego_embeddings.device), std=x
+        ).to(ego_embeddings.device)
         ego_embeddings = ego_embeddings + noise
         embeddings_list = [ego_embeddings]
         for aggregator in self.aggregator_layers:
@@ -353,13 +421,19 @@ class KGAT(KnowledgeRecommender):
             norm_embeddings = F.normalize(ego_embeddings, p=2, dim=1)
             embeddings_list.append(norm_embeddings)
         kgat_all_embeddings = torch.cat(embeddings_list, dim=1)
-        user_all_embeddings, entity_all_embeddings = torch.split(kgat_all_embeddings, [self.n_users, self.n_entities])
+        user_all_embeddings, entity_all_embeddings = torch.split(
+            kgat_all_embeddings, [self.n_users, self.n_entities]
+        )
         return user_all_embeddings, entity_all_embeddings
 
     def forward_2_noise(self):
         ego_embeddings = self._get_ego_embeddings()
-        x=0.01 + torch.zeros(ego_embeddings.shape[0], ego_embeddings.shape[1],dtype=self.data_type).to(ego_embeddings.device) 
-        noise =torch.normal(mean=torch.tensor([0.0]).to(ego_embeddings.device),std=x).to(ego_embeddings.device)
+        x = 0.01 + torch.zeros(
+            ego_embeddings.shape[0], ego_embeddings.shape[1], dtype=self.data_type
+        ).to(ego_embeddings.device)
+        noise = torch.normal(
+            mean=torch.tensor([0.0]).to(ego_embeddings.device), std=x
+        ).to(ego_embeddings.device)
         ego_embeddings = ego_embeddings + noise
         embeddings_list = [ego_embeddings]
         for aggregator in self.aggregator_layers:
@@ -367,13 +441,19 @@ class KGAT(KnowledgeRecommender):
             norm_embeddings = F.normalize(ego_embeddings, p=2, dim=1)
             embeddings_list.append(norm_embeddings)
         kgat_all_embeddings = torch.cat(embeddings_list, dim=1)
-        user_all_embeddings, entity_all_embeddings = torch.split(kgat_all_embeddings, [self.n_users, self.n_entities])
+        user_all_embeddings, entity_all_embeddings = torch.split(
+            kgat_all_embeddings, [self.n_users, self.n_entities]
+        )
         return user_all_embeddings, entity_all_embeddings
 
     def forward_3_noise(self):
         ego_embeddings = self._get_ego_embeddings()
-        x=0.01 + torch.zeros(ego_embeddings.shape[0], ego_embeddings.shape[1],dtype=self.data_type).to(ego_embeddings.device) 
-        noise =torch.normal(mean=torch.tensor([0.0]).to(ego_embeddings.device),std=x).to(ego_embeddings.device)
+        x = 0.01 + torch.zeros(
+            ego_embeddings.shape[0], ego_embeddings.shape[1], dtype=self.data_type
+        ).to(ego_embeddings.device)
+        noise = torch.normal(
+            mean=torch.tensor([0.0]).to(ego_embeddings.device), std=x
+        ).to(ego_embeddings.device)
         ego_embeddings = ego_embeddings + noise
         embeddings_list = [ego_embeddings]
         for aggregator in self.aggregator_layers:
@@ -381,7 +461,9 @@ class KGAT(KnowledgeRecommender):
             norm_embeddings = F.normalize(ego_embeddings, p=2, dim=1)
             embeddings_list.append(norm_embeddings)
         kgat_all_embeddings = torch.cat(embeddings_list, dim=1)
-        user_all_embeddings, entity_all_embeddings = torch.split(kgat_all_embeddings, [self.n_users, self.n_entities])
+        user_all_embeddings, entity_all_embeddings = torch.split(
+            kgat_all_embeddings, [self.n_users, self.n_entities]
+        )
         return user_all_embeddings, entity_all_embeddings
 
     def mask_correlated_samples(self, batch_size):
@@ -416,7 +498,9 @@ class KGAT(KnowledgeRecommender):
         return loss
 
     def projection_head_map(self, state, mode):
-        for i, l in enumerate(self.projection_head):  # 0: Linear 1: BN (relu)  2: Linear 3:BN (relu)
+        for i, l in enumerate(
+            self.projection_head
+        ):  # 0: Linear 1: BN (relu)  2: Linear 3:BN (relu)
             if i % 2 != 0:
                 if mode == 0:
                     l.train()  # set BN to train mode: use a learned mean and variance.
@@ -440,7 +524,9 @@ class KGAT(KnowledgeRecommender):
 
         # 如果需要，可以根据某种标准（如样本难度）来调整采样权重
         weights = torch.ones(embeddings.shape[0])  # 默认均匀权重
-        sampler = WeightedRandomSampler(weights, num_samples=num_samples, replacement=False)
+        sampler = WeightedRandomSampler(
+            weights, num_samples=num_samples, replacement=False
+        )
         rand_samples = list(sampler)
 
         return rand_samples
@@ -449,7 +535,6 @@ class KGAT(KnowledgeRecommender):
         if self.restore_user_e is not None or self.restore_entity_e is not None:
             self.restore_user_e, self.restore_entity_e = None, None
 
-
         # get loss for training rs
         user = interaction[self.USER_ID]
         pos_item = interaction[self.ITEM_ID]
@@ -460,10 +545,10 @@ class KGAT(KnowledgeRecommender):
         num_noise_interactions = int(batch_size * 0.1)  # 添加10%的噪声交互
         user_ids = list(range(self.n_users))
         item_ids = list(range(self.n_items))
-    
+
         # 确保不会重复选择已经存在的交互
         existing_interactions = set(zip(user, pos_item))
-    
+
         noise_user, noise_pos_item, noise_neg_item = [], [], []
         for _ in range(num_noise_interactions):
             while True:
@@ -471,29 +556,23 @@ class KGAT(KnowledgeRecommender):
                 npi = random.choice(item_ids)
                 if (nu, npi) not in existing_interactions:
                     break
-            
+
             noise_user.append(nu)
             noise_pos_item.append(npi)
             noise_neg_item.append(npi)  # 假设噪声交互没有特定的负样本
-    
+
         # 将噪声交互添加到原始交互中
         user = torch.cat([user, torch.tensor(noise_user, device=user.device)])
-        pos_item = torch.cat([pos_item, torch.tensor(noise_pos_item, device=pos_item.device)])
-        neg_item = torch.cat([neg_item, torch.tensor(noise_neg_item, device=neg_item.device)])
-
-
-
-
-
-
-
-
-
-        
+        pos_item = torch.cat(
+            [pos_item, torch.tensor(noise_pos_item, device=pos_item.device)]
+        )
+        neg_item = torch.cat(
+            [neg_item, torch.tensor(noise_neg_item, device=neg_item.device)]
+        )
 
         user_all_embeddings, entity_all_embeddings = self.forward_2()
 
-        #计算推荐损失
+        # 计算推荐损失
         u_embeddings = user_all_embeddings[user]
         pos_embeddings = entity_all_embeddings[pos_item]
         neg_embeddings = entity_all_embeddings[neg_item]
@@ -502,71 +581,80 @@ class KGAT(KnowledgeRecommender):
         neg_scores = torch.mul(u_embeddings, neg_embeddings).sum(dim=1)
         mf_loss = self.mf_loss(pos_scores, neg_scores)
         reg_loss = self.reg_loss(u_embeddings, pos_embeddings, neg_embeddings)
-        
 
-        
-
-        #u-p对比学习--引入高斯噪声
+        # u-p对比学习--引入高斯噪声
         user_all_embeddings_n, entity_all_embeddings_n = self.forward_2_noise()
 
         u_embeddings_n = user_all_embeddings_n[user]
         pos_embeddings_n = entity_all_embeddings_n[pos_item]
-        
+
         u_embeddings_n = self.projection_head_map(u_embeddings_n, self.mode)
         pos_embeddings_n = self.projection_head_map(pos_embeddings_n, 1 - self.mode)
-        
-        ui_cts_loss_n = self.cts_loss(u_embeddings_n, pos_embeddings_n, temp=1.0,
-                                    batch_size=u_embeddings_n.shape[0])
-         
-        #引入对抗噪声
+
+        ui_cts_loss_n = self.cts_loss(
+            u_embeddings_n,
+            pos_embeddings_n,
+            temp=1.0,
+            batch_size=u_embeddings_n.shape[0],
+        )
+
+        # 引入对抗噪声
         # u-p对抗学习
-        #model.zero_grad()
+        # model.zero_grad()
         u_embeddings_n.retain_grad()
         pos_embeddings_n.retain_grad()
-        
+
         ui_cts_loss_n.backward(retain_graph=True)
         u_unnormalized_noise_a = u_embeddings_n.grad.clone().detach()
-        p_unnormalized_noise_b = pos_embeddings_n.grad.clone().detach()  
-        
-        #噪声归一化
-        u_norm_a = u_unnormalized_noise_a.norm(p=2, dim=-1)
-        u_normalized_noise_a = u_unnormalized_noise_a / (u_norm_a.unsqueeze(dim=-1) + 1e-10)  # add 1e-10 to avoid NaN
-        
-        p_norm_b = p_unnormalized_noise_b.norm(p=2, dim=-1)
-        p_normalized_noise_b = p_unnormalized_noise_b / (p_norm_b.unsqueeze(dim=-1) + 1e-10)  # add 1e-10 to avoid NaN
-        
-        self.noise_u = self.noise_norm * u_normalized_noise_a
-        self.noise_p = self.noise_norm * p_normalized_noise_b  
+        p_unnormalized_noise_b = pos_embeddings_n.grad.clone().detach()
 
-        
+        # 噪声归一化
+        u_norm_a = u_unnormalized_noise_a.norm(p=2, dim=-1)
+        u_normalized_noise_a = u_unnormalized_noise_a / (
+            u_norm_a.unsqueeze(dim=-1) + 1e-10
+        )  # add 1e-10 to avoid NaN
+
+        p_norm_b = p_unnormalized_noise_b.norm(p=2, dim=-1)
+        p_normalized_noise_b = p_unnormalized_noise_b / (
+            p_norm_b.unsqueeze(dim=-1) + 1e-10
+        )  # add 1e-10 to avoid NaN
+
+        self.noise_u = self.noise_norm * u_normalized_noise_a
+        self.noise_p = self.noise_norm * p_normalized_noise_b
+
         # u-p对抗学习
-        user_all_embeddings_u, entity_all_embeddings_p = user_all_embeddings_n, entity_all_embeddings_n
+        user_all_embeddings_u, entity_all_embeddings_p = (
+            user_all_embeddings_n,
+            entity_all_embeddings_n,
+        )
         gan_u_cts_embedding = user_all_embeddings_u[user]
         gan_p_cts_embedding = entity_all_embeddings_p[pos_item]
         gan_u_cts_embedding = gan_u_cts_embedding + self.noise_u
         gan_p_cts_embedding = gan_p_cts_embedding + self.noise_p
-        
+
         gan_u_cts_embedding = self.projection_head_map(gan_u_cts_embedding, self.mode)
-        gan_p_cts_embedding = self.projection_head_map(gan_p_cts_embedding, 1 - self.mode)
-        #计算对抗噪声的对比学习损失
-        ui_cts_loss_n1 = self.cts_loss(gan_u_cts_embedding, gan_p_cts_embedding, temp=1.0,
-                                    batch_size=gan_u_cts_embedding.shape[0])
+        gan_p_cts_embedding = self.projection_head_map(
+            gan_p_cts_embedding, 1 - self.mode
+        )
+        # 计算对抗噪声的对比学习损失
+        ui_cts_loss_n1 = self.cts_loss(
+            gan_u_cts_embedding,
+            gan_p_cts_embedding,
+            temp=1.0,
+            batch_size=gan_u_cts_embedding.shape[0],
+        )
 
         # projection_head_map函数的模式切换
         self.mode = 1 - self.mode
-        
-        loss = mf_loss + self.reg_weight * reg_loss +  0.01 * ui_cts_loss_n1 
-        
+
+        loss = mf_loss + self.reg_weight * reg_loss + 0.01 * ui_cts_loss_n1
+
         return loss
-
-
-
 
     def calculate_h_loss(self, interaction):
         if self.restore_user_e is not None or self.restore_entity_e is not None:
             self.restore_user_e, self.restore_entity_e = None, None
 
-
         # get loss for training rs
         user = interaction[self.USER_ID]
         pos_item = interaction[self.ITEM_ID]
@@ -577,10 +665,10 @@ class KGAT(KnowledgeRecommender):
         num_noise_interactions = int(batch_size * 0.1)  # 添加10%的噪声交互
         user_ids = list(range(self.n_users))
         item_ids = list(range(self.n_items))
-    
+
         # 确保不会重复选择已经存在的交互
         existing_interactions = set(zip(user, pos_item))
-    
+
         noise_user, noise_pos_item, noise_neg_item = [], [], []
         for _ in range(num_noise_interactions):
             while True:
@@ -588,23 +676,23 @@ class KGAT(KnowledgeRecommender):
                 npi = random.choice(item_ids)
                 if (nu, npi) not in existing_interactions:
                     break
-            
+
             noise_user.append(nu)
             noise_pos_item.append(npi)
             noise_neg_item.append(npi)  # 假设噪声交互没有特定的负样本
-    
+
         # 将噪声交互添加到原始交互中
         user = torch.cat([user, torch.tensor(noise_user, device=user.device)])
-        pos_item = torch.cat([pos_item, torch.tensor(noise_pos_item, device=pos_item.device)])
-        neg_item = torch.cat([neg_item, torch.tensor(noise_neg_item, device=neg_item.device)])
-
-
-
-        
+        pos_item = torch.cat(
+            [pos_item, torch.tensor(noise_pos_item, device=pos_item.device)]
+        )
+        neg_item = torch.cat(
+            [neg_item, torch.tensor(noise_neg_item, device=neg_item.device)]
+        )
 
         user_all_embeddings, entity_all_embeddings = self.forward_1()
 
-        #计算推荐损失
+        # 计算推荐损失
         u_embeddings = user_all_embeddings[user]
         pos_embeddings = entity_all_embeddings[pos_item]
         neg_embeddings = entity_all_embeddings[neg_item]
@@ -613,61 +701,74 @@ class KGAT(KnowledgeRecommender):
         neg_scores = torch.mul(u_embeddings, neg_embeddings).sum(dim=1)
         mf_loss = self.mf_loss(pos_scores, neg_scores)
         reg_loss = self.reg_loss(u_embeddings, pos_embeddings, neg_embeddings)
-        
 
-        
-
-        #u-p对比学习--引入高斯噪声
+        # u-p对比学习--引入高斯噪声
         user_all_embeddings_n, entity_all_embeddings_n = self.forward_1_noise()
 
         u_embeddings_n = user_all_embeddings_n[user]
         pos_embeddings_n = entity_all_embeddings_n[pos_item]
-        
+
         u_embeddings_n = self.projection_head_map(u_embeddings_n, self.mode)
         pos_embeddings_n = self.projection_head_map(pos_embeddings_n, 1 - self.mode)
-        
-        ui_cts_loss_n = self.cts_loss(u_embeddings_n, pos_embeddings_n, temp=1.0,
-                                    batch_size=u_embeddings_n.shape[0])
-         
-        #引入对抗噪声
+
+        ui_cts_loss_n = self.cts_loss(
+            u_embeddings_n,
+            pos_embeddings_n,
+            temp=1.0,
+            batch_size=u_embeddings_n.shape[0],
+        )
+
+        # 引入对抗噪声
         # u-p对抗学习
-        #model.zero_grad()
+        # model.zero_grad()
         u_embeddings_n.retain_grad()
         pos_embeddings_n.retain_grad()
-        
+
         ui_cts_loss_n.backward(retain_graph=True)
         u_unnormalized_noise_a = u_embeddings_n.grad.clone().detach()
-        p_unnormalized_noise_b = pos_embeddings_n.grad.clone().detach()  
-        
-        #噪声归一化
-        u_norm_a = u_unnormalized_noise_a.norm(p=2, dim=-1)
-        u_normalized_noise_a = u_unnormalized_noise_a / (u_norm_a.unsqueeze(dim=-1) + 1e-10)  # add 1e-10 to avoid NaN
-        
-        p_norm_b = p_unnormalized_noise_b.norm(p=2, dim=-1)
-        p_normalized_noise_b = p_unnormalized_noise_b / (p_norm_b.unsqueeze(dim=-1) + 1e-10)  # add 1e-10 to avoid NaN
-        
-        self.noise_u = self.noise_norm * u_normalized_noise_a
-        self.noise_p = self.noise_norm * p_normalized_noise_b  
+        p_unnormalized_noise_b = pos_embeddings_n.grad.clone().detach()
 
-        
+        # 噪声归一化
+        u_norm_a = u_unnormalized_noise_a.norm(p=2, dim=-1)
+        u_normalized_noise_a = u_unnormalized_noise_a / (
+            u_norm_a.unsqueeze(dim=-1) + 1e-10
+        )  # add 1e-10 to avoid NaN
+
+        p_norm_b = p_unnormalized_noise_b.norm(p=2, dim=-1)
+        p_normalized_noise_b = p_unnormalized_noise_b / (
+            p_norm_b.unsqueeze(dim=-1) + 1e-10
+        )  # add 1e-10 to avoid NaN
+
+        self.noise_u = self.noise_norm * u_normalized_noise_a
+        self.noise_p = self.noise_norm * p_normalized_noise_b
+
         # u-p对抗学习
-        user_all_embeddings_u, entity_all_embeddings_p = user_all_embeddings_n, entity_all_embeddings_n
+        user_all_embeddings_u, entity_all_embeddings_p = (
+            user_all_embeddings_n,
+            entity_all_embeddings_n,
+        )
         gan_u_cts_embedding = user_all_embeddings_u[user]
         gan_p_cts_embedding = entity_all_embeddings_p[pos_item]
         gan_u_cts_embedding = gan_u_cts_embedding + self.noise_u
         gan_p_cts_embedding = gan_p_cts_embedding + self.noise_p
-        
+
         gan_u_cts_embedding = self.projection_head_map(gan_u_cts_embedding, self.mode)
-        gan_p_cts_embedding = self.projection_head_map(gan_p_cts_embedding, 1 - self.mode)
-        #计算对抗噪声的对比学习损失
-        ui_cts_loss_n1 = self.cts_loss(gan_u_cts_embedding, gan_p_cts_embedding, temp=1.0,
-                                    batch_size=gan_u_cts_embedding.shape[0])
+        gan_p_cts_embedding = self.projection_head_map(
+            gan_p_cts_embedding, 1 - self.mode
+        )
+        # 计算对抗噪声的对比学习损失
+        ui_cts_loss_n1 = self.cts_loss(
+            gan_u_cts_embedding,
+            gan_p_cts_embedding,
+            temp=1.0,
+            batch_size=gan_u_cts_embedding.shape[0],
+        )
 
         # projection_head_map函数的模式切换
         self.mode = 1 - self.mode
-        
-        loss = mf_loss + self.reg_weight * reg_loss +  0.01 * ui_cts_loss_n1
-        
+
+        loss = mf_loss + self.reg_weight * reg_loss + 0.01 * ui_cts_loss_n1
+
         return loss
 
     def calculate_e_loss(self, interaction):
@@ -684,10 +785,10 @@ class KGAT(KnowledgeRecommender):
         num_noise_interactions = int(batch_size * 0.1)  # 添加10%的噪声交互
         user_ids = list(range(self.n_users))
         item_ids = list(range(self.n_items))
-    
+
         # 确保不会重复选择已经存在的交互
         existing_interactions = set(zip(user, pos_item))
-    
+
         noise_user, noise_pos_item, noise_neg_item = [], [], []
         for _ in range(num_noise_interactions):
             while True:
@@ -695,22 +796,23 @@ class KGAT(KnowledgeRecommender):
                 npi = random.choice(item_ids)
                 if (nu, npi) not in existing_interactions:
                     break
-            
+
             noise_user.append(nu)
             noise_pos_item.append(npi)
             noise_neg_item.append(npi)  # 假设噪声交互没有特定的负样本
-    
+
         # 将噪声交互添加到原始交互中
         user = torch.cat([user, torch.tensor(noise_user, device=user.device)])
-        pos_item = torch.cat([pos_item, torch.tensor(noise_pos_item, device=pos_item.device)])
-        neg_item = torch.cat([neg_item, torch.tensor(noise_neg_item, device=neg_item.device)])
-
-
-        
+        pos_item = torch.cat(
+            [pos_item, torch.tensor(noise_pos_item, device=pos_item.device)]
+        )
+        neg_item = torch.cat(
+            [neg_item, torch.tensor(noise_neg_item, device=neg_item.device)]
+        )
 
         user_all_embeddings, entity_all_embeddings = self.forward_3()
 
-        #计算推荐损失
+        # 计算推荐损失
         u_embeddings = user_all_embeddings[user]
         pos_embeddings = entity_all_embeddings[pos_item]
         neg_embeddings = entity_all_embeddings[neg_item]
@@ -719,61 +821,74 @@ class KGAT(KnowledgeRecommender):
         neg_scores = torch.mul(u_embeddings, neg_embeddings).sum(dim=1)
         mf_loss = self.mf_loss(pos_scores, neg_scores)
         reg_loss = self.reg_loss(u_embeddings, pos_embeddings, neg_embeddings)
-        
 
-        
-
-        #u-p对比学习--引入高斯噪声
+        # u-p对比学习--引入高斯噪声
         user_all_embeddings_n, entity_all_embeddings_n = self.forward_3_noise()
 
         u_embeddings_n = user_all_embeddings_n[user]
         pos_embeddings_n = entity_all_embeddings_n[pos_item]
-        
+
         u_embeddings_n = self.projection_head_map(u_embeddings_n, self.mode)
         pos_embeddings_n = self.projection_head_map(pos_embeddings_n, 1 - self.mode)
-        
-        ui_cts_loss_n = self.cts_loss(u_embeddings_n, pos_embeddings_n, temp=1.0,
-                                    batch_size=u_embeddings_n.shape[0])
-         
-        #引入对抗噪声
+
+        ui_cts_loss_n = self.cts_loss(
+            u_embeddings_n,
+            pos_embeddings_n,
+            temp=1.0,
+            batch_size=u_embeddings_n.shape[0],
+        )
+
+        # 引入对抗噪声
         # u-p对抗学习
-        #model.zero_grad()
+        # model.zero_grad()
         u_embeddings_n.retain_grad()
         pos_embeddings_n.retain_grad()
-        
+
         ui_cts_loss_n.backward(retain_graph=True)
         u_unnormalized_noise_a = u_embeddings_n.grad.clone().detach()
-        p_unnormalized_noise_b = pos_embeddings_n.grad.clone().detach()  
-        
-        #噪声归一化
-        u_norm_a = u_unnormalized_noise_a.norm(p=2, dim=-1)
-        u_normalized_noise_a = u_unnormalized_noise_a / (u_norm_a.unsqueeze(dim=-1) + 1e-10)  # add 1e-10 to avoid NaN
-        
-        p_norm_b = p_unnormalized_noise_b.norm(p=2, dim=-1)
-        p_normalized_noise_b = p_unnormalized_noise_b / (p_norm_b.unsqueeze(dim=-1) + 1e-10)  # add 1e-10 to avoid NaN
-        
-        self.noise_u = self.noise_norm * u_normalized_noise_a
-        self.noise_p = self.noise_norm * p_normalized_noise_b  
+        p_unnormalized_noise_b = pos_embeddings_n.grad.clone().detach()
 
-        
+        # 噪声归一化
+        u_norm_a = u_unnormalized_noise_a.norm(p=2, dim=-1)
+        u_normalized_noise_a = u_unnormalized_noise_a / (
+            u_norm_a.unsqueeze(dim=-1) + 1e-10
+        )  # add 1e-10 to avoid NaN
+
+        p_norm_b = p_unnormalized_noise_b.norm(p=2, dim=-1)
+        p_normalized_noise_b = p_unnormalized_noise_b / (
+            p_norm_b.unsqueeze(dim=-1) + 1e-10
+        )  # add 1e-10 to avoid NaN
+
+        self.noise_u = self.noise_norm * u_normalized_noise_a
+        self.noise_p = self.noise_norm * p_normalized_noise_b
+
         # u-p对抗学习
-        user_all_embeddings_u, entity_all_embeddings_p = user_all_embeddings_n, entity_all_embeddings_n
+        user_all_embeddings_u, entity_all_embeddings_p = (
+            user_all_embeddings_n,
+            entity_all_embeddings_n,
+        )
         gan_u_cts_embedding = user_all_embeddings_u[user]
         gan_p_cts_embedding = entity_all_embeddings_p[pos_item]
         gan_u_cts_embedding = gan_u_cts_embedding + self.noise_u
         gan_p_cts_embedding = gan_p_cts_embedding + self.noise_p
-        
+
         gan_u_cts_embedding = self.projection_head_map(gan_u_cts_embedding, self.mode)
-        gan_p_cts_embedding = self.projection_head_map(gan_p_cts_embedding, 1 - self.mode)
-        #计算对抗噪声的对比学习损失
-        ui_cts_loss_n1 = self.cts_loss(gan_u_cts_embedding, gan_p_cts_embedding, temp=1.0,
-                                    batch_size=gan_u_cts_embedding.shape[0])
+        gan_p_cts_embedding = self.projection_head_map(
+            gan_p_cts_embedding, 1 - self.mode
+        )
+        # 计算对抗噪声的对比学习损失
+        ui_cts_loss_n1 = self.cts_loss(
+            gan_u_cts_embedding,
+            gan_p_cts_embedding,
+            temp=1.0,
+            batch_size=gan_u_cts_embedding.shape[0],
+        )
 
         # projection_head_map函数的模式切换
         self.mode = 1 - self.mode
-        
-        loss = mf_loss + self.reg_weight * reg_loss +  0.01 * ui_cts_loss_n1
-        
+
+        loss = mf_loss + self.reg_weight * reg_loss + 0.01 * ui_cts_loss_n1
+
         return loss
 
         # 引入双曲空间
@@ -807,7 +922,6 @@ class KGAT(KnowledgeRecommender):
 
         """
 
-
     def get_rhs(self, queries):
         """Get embeddings and biases of target entities."""
 
@@ -816,7 +930,7 @@ class KGAT(KnowledgeRecommender):
     def similarity_score(self, lhs_e, rhs_e):
         """Compute similarity scores or queries against targets in embedding space."""
         lhs_e, c = lhs_e
-        return - hyp_distance_multi_c(lhs_e, rhs_e, c) ** 2
+        return -hyp_distance_multi_c(lhs_e, rhs_e, c) ** 2
 
     def get_queries(self, queries):
         """Compute embedding and biases of queries."""
@@ -832,7 +946,9 @@ class KGAT(KnowledgeRecommender):
         rot_q = givens_rotations(rot_mat, head).view((-1, 1, self.rank))
         ref_q = givens_reflection(ref_mat, head).view((-1, 1, self.rank))
         cands = torch.cat([ref_q, rot_q], dim=1).to(self.device)
-        context_vec = self.context_vec(queries[:, 1]).view((-1, 1, self.rank)).to(self.device)
+        context_vec = (
+            self.context_vec(queries[:, 1]).view((-1, 1, self.rank)).to(self.device)
+        )
         att_weights = torch.sum(context_vec * cands * self.scale, dim=-1, keepdim=True)
         att_weights = self.act(att_weights)
         att_q = torch.sum(att_weights * cands, dim=1)
@@ -849,9 +965,9 @@ class KGAT(KnowledgeRecommender):
         lhs_e, lhs_biases = lhs
         rhs_e, rhs_biases = rhs
         score = self.similarity_score(lhs_e, rhs_e)
-        if self.bias == 'constant':
+        if self.bias == "constant":
             return self.gamma.item() + score
-        elif self.bias == 'learn':
+        elif self.bias == "learn":
             return lhs_biases + rhs_biases + score
         else:
             return score
@@ -909,7 +1025,7 @@ class KGAT(KnowledgeRecommender):
         # negative samples
         negative_score, _ = self.Forward(neg_samples)
         negative_score = F.logsigmoid(-negative_score)
-        loss = - torch.cat([positive_score, negative_score], dim=0).mean()
+        loss = -torch.cat([positive_score, negative_score], dim=0).mean()
         return loss, factors
 
     def calculate_loss1(self, input_batch, neg_samples):
@@ -934,8 +1050,9 @@ class KGAT(KnowledgeRecommender):
         neg_t_e = self.entity_embedding(neg_t).unsqueeze(1)
         r_e = self.relation_embedding(r)
 
-
-        r_trans_w = self.trans_w(r).view(r.size(0), self.embedding_size, self.kg_embedding_size)
+        r_trans_w = self.trans_w(r).view(
+            r.size(0), self.embedding_size, self.kg_embedding_size
+        )
 
         h_e = h_e.double()
         r_trans_w = r_trans_w.double()
@@ -952,34 +1069,31 @@ class KGAT(KnowledgeRecommender):
         neg_t_e = self.entity_embedding(neg_t)
         r_e = self.relation_embedding(r)
 
-
         # 分割实部与虚部
 
-        h_real = h_e[:,  :h_e.shape[1]//2]  # [batch_size, 1, emb_dim_half]
-        h_imag = h_e[:,  h_e.shape[1]//2:]  # [batch_size, 1, emb_dim_half]
+        h_real = h_e[:, : h_e.shape[1] // 2]  # [batch_size, 1, emb_dim_half]
+        h_imag = h_e[:, h_e.shape[1] // 2 :]  # [batch_size, 1, emb_dim_half]
         head_e = h_real, h_imag
-        
-        pos_t_real = pos_t_e[:,  :pos_t_e.shape[1]//2]
-        pos_t_imag = pos_t_e[:,  pos_t_e.shape[1]//2:]
-        pos_rhs_e = pos_t_real,pos_t_imag
 
-        
-        neg_t_real = neg_t_e[:,  :neg_t_e.shape[1]//2]
-        neg_t_imag = neg_t_e[:,  neg_t_e.shape[1]//2:]
-        neg_rhs_e = neg_t_real,neg_t_imag
+        pos_t_real = pos_t_e[:, : pos_t_e.shape[1] // 2]
+        pos_t_imag = pos_t_e[:, pos_t_e.shape[1] // 2 :]
+        pos_rhs_e = pos_t_real, pos_t_imag
 
-        
-        rel_e = r_e[:, :r_e.shape[1]//2], r_e[:, r_e.shape[1]//2:]
+        neg_t_real = neg_t_e[:, : neg_t_e.shape[1] // 2]
+        neg_t_imag = neg_t_e[:, neg_t_e.shape[1] // 2 :]
+        neg_rhs_e = neg_t_real, neg_t_imag
+
+        rel_e = r_e[:, : r_e.shape[1] // 2], r_e[:, r_e.shape[1] // 2 :]
         rel_norm = torch.sqrt(rel_e[0] ** 2 + rel_e[1] ** 2)
         cos = rel_e[0] / rel_norm
         sin = rel_e[1] / rel_norm
         lhs_e = head_e[0] * cos - head_e[1] * sin, head_e[0] * sin + head_e[1] * cos
 
-        #print('qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq')
-        #print(lhs_e[0].shape)
-        #print(rel_e[0].shape)
-        #print(pos_rhs_e[0].shape)
-        #print('qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq')
+        # print('qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq')
+        # print(lhs_e[0].shape)
+        # print(rel_e[0].shape)
+        # print(pos_rhs_e[0].shape)
+        # print('qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq')
 
         return lhs_e, rel_e, pos_rhs_e, neg_rhs_e
 
@@ -1011,7 +1125,7 @@ class KGAT(KnowledgeRecommender):
                 npt = random.choice(entity_ids)
                 if (nh, nr, npt) not in existing_triples:
                     break
-            
+
             noise_h.append(nh)
             noise_r.append(nr)
             noise_pos_t.append(npt)
@@ -1057,7 +1171,7 @@ class KGAT(KnowledgeRecommender):
                 npt = random.choice(entity_ids)
                 if (nh, nr, npt) not in existing_triples:
                     break
-            
+
             noise_h.append(nh)
             noise_r.append(nr)
             noise_pos_t.append(npt)
@@ -1075,8 +1189,6 @@ class KGAT(KnowledgeRecommender):
         kg_loss = F.softplus(pos_tail_score - neg_tail_score).mean()
         kg_reg_loss = self.reg_loss(h_e, r_e, pos_t_e, neg_t_e)
         loss = kg_loss + self.reg_weight * kg_reg_loss
-
-
 
         return loss
 
@@ -1107,7 +1219,7 @@ class KGAT(KnowledgeRecommender):
                 npt = random.choice(entity_ids)
                 if (nh, nr, npt) not in existing_triples:
                     break
-            
+
             noise_h.append(nh)
             noise_r.append(nr)
             noise_pos_t.append(npt)
@@ -1119,50 +1231,53 @@ class KGAT(KnowledgeRecommender):
         pos_t = torch.cat([pos_t, torch.tensor(noise_pos_t, device=pos_t.device)])
         neg_t = torch.cat([neg_t, torch.tensor(noise_neg_t, device=neg_t.device)])
 
-        
-
         lhs_e, r_e, pos_t_e, neg_t_e = self._get_rotate_embedding(h, r, pos_t, neg_t)
 
-        pos_tail_score = torch.sum(lhs_e[0] * pos_t_e[0] + lhs_e[1] * pos_t_e[1],1, keepdim=True)
-        neg_tail_score = torch.sum(lhs_e[0] * neg_t_e[0] + lhs_e[1] * neg_t_e[1],1, keepdim=True)
+        pos_tail_score = torch.sum(
+            lhs_e[0] * pos_t_e[0] + lhs_e[1] * pos_t_e[1], 1, keepdim=True
+        )
+        neg_tail_score = torch.sum(
+            lhs_e[0] * neg_t_e[0] + lhs_e[1] * neg_t_e[1], 1, keepdim=True
+        )
 
-        #print('qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq')
-        #has_negative = torch.any(pos_tail_score < 0)
+        # print('qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq')
+        # has_negative = torch.any(pos_tail_score < 0)
 
-        #if has_negative:
+        # if has_negative:
         #    print("The pos_tail_score vector contains negative values.")
-        #else:
+        # else:
         #    print("The pos_tail_score vector does not contain any negative values.")
 
-        #print('qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq')
+        # print('qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq')
 
-        
+        # pos_tail_score = torch.norm(torch.stack([lhs_e[0] - pos_t_e[0], lhs_e[1] - pos_t_e[1]], dim=0), p=2, dim=0).sum(dim=1,keepdim=True)
+        # neg_tail_score = torch.norm(torch.stack([lhs_e[0] - neg_t_e[0], lhs_e[1] - neg_t_e[1]], dim=0), p=2, dim=0).sum(dim=1,keepdim=True)
 
+        # print('qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq')
+        # has_negative = torch.any(pos_tail_score < 0)
 
-
-        #pos_tail_score = torch.norm(torch.stack([lhs_e[0] - pos_t_e[0], lhs_e[1] - pos_t_e[1]], dim=0), p=2, dim=0).sum(dim=1,keepdim=True)
-        #neg_tail_score = torch.norm(torch.stack([lhs_e[0] - neg_t_e[0], lhs_e[1] - neg_t_e[1]], dim=0), p=2, dim=0).sum(dim=1,keepdim=True)
-
-        #print('qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq')
-        #has_negative = torch.any(pos_tail_score < 0)
-
-        #if has_negative:
+        # if has_negative:
         #    print("The pos_tail_score vector contains negative values.")
-        #else:
+        # else:
         #   print("The pos_tail_score vector does not contain any negative values.")
 
-        #print('qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq')
-
+        # print('qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq')
 
         kg_loss = F.softplus(pos_tail_score - neg_tail_score).mean()
-        kg_reg_loss = self.reg_loss(lhs_e[0], r_e[0], pos_t_e[0], neg_t_e[0],lhs_e[1], r_e[1], pos_t_e[1], neg_t_e[1])
+        kg_reg_loss = self.reg_loss(
+            lhs_e[0],
+            r_e[0],
+            pos_t_e[0],
+            neg_t_e[0],
+            lhs_e[1],
+            r_e[1],
+            pos_t_e[1],
+            neg_t_e[1],
+        )
 
         loss = kg_loss + self.reg_weight * kg_reg_loss
 
         return loss
-
-
-
 
     def generate_transE_score3(self, hs, ts, r):
         r"""Calculating scores for triples in KG.
@@ -1181,47 +1296,40 @@ class KGAT(KnowledgeRecommender):
         t_e = all_embeddings[ts]
         r_e = self.relation_embedding(r)
 
+        head_e = h_e[:, : h_e.shape[1] // 2], h_e[:, h_e.shape[1] // 2 :]
+        rhs_e = t_e[:, : t_e.shape[1] // 2], t_e[:, t_e.shape[1] // 2 :]
+        rel_e = r_e[:, : r_e.shape[1] // 2], r_e[:, r_e.shape[1] // 2 :]
+        # print('mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm')
+        # print(head_e[0].shape)
+        # print(rel_e[0].shape)
+        # print(rhs_e[0].shape)
 
+        # print('mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm')
 
-        head_e = h_e[:, :h_e.shape[1]//2], h_e[:, h_e.shape[1]//2:]
-        rhs_e = t_e[:, :t_e.shape[1]//2], t_e[:, t_e.shape[1]//2:]
-        rel_e = r_e[:,:r_e.shape[1]//2], r_e[:,r_e.shape[1]//2:]
-        #print('mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm')
-        #print(head_e[0].shape)
-        #print(rel_e[0].shape)
-        #print(rhs_e[0].shape)
-
-        #print('mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm')
-        
-        
         rel_norm = torch.sqrt(rel_e[0] ** 2 + rel_e[1] ** 2)
         cos = rel_e[0] / rel_norm
         sin = rel_e[1] / rel_norm
-        #lhs_e = [head_e[0] * cos - head_e[1] * sin,head_e[0] * sin + head_e[1] * cos]
+        # lhs_e = [head_e[0] * cos - head_e[1] * sin,head_e[0] * sin + head_e[1] * cos]
         lhs_e = head_e[0] * cos - head_e[1] * sin, head_e[0] * sin + head_e[1] * cos
- 
 
-        #cos_sim1 = nn.CosineSimilarity(dim=1, eps=1e-8)(lhs_e[0], self.tanh(rhs_e[0]))
-        #cos_sim2 = nn.CosineSimilarity(dim=1, eps=1e-8)(lhs_e[1], self.tanh(rhs_e[1]))
+        # cos_sim1 = nn.CosineSimilarity(dim=1, eps=1e-8)(lhs_e[0], self.tanh(rhs_e[0]))
+        # cos_sim2 = nn.CosineSimilarity(dim=1, eps=1e-8)(lhs_e[1], self.tanh(rhs_e[1]))
 
-        #softmax_scores1 = F.softmax(cos_sim1, dim=0)
-        #softmax_scores2 = F.softmax(cos_sim2, dim=0)
-        #softmax_scores = softmax_scores1 + softmax_scores2
+        # softmax_scores1 = F.softmax(cos_sim1, dim=0)
+        # softmax_scores2 = F.softmax(cos_sim2, dim=0)
+        # softmax_scores = softmax_scores1 + softmax_scores2
 
-
-
-        
-        score = torch.mul(lhs_e[0], self.tanh(rhs_e[0])).sum(dim=1) + torch.mul(lhs_e[1], self.tanh(rhs_e[1])).sum(dim=1)
-        #score = torch.mul(lhs_e, self.tanh(t_e)).sum(dim=1)
-        #score = torch.sum(lhs_e[0] * rhs_e[0] + lhs_e[1] * rhs_e[1],1, keepdim=True)
-        #kg_score = score.squeeze()
-        #print('**************************************************')
-        #print(kg_score.shape)
-        #print('**************************************************')
-
+        score = torch.mul(lhs_e[0], self.tanh(rhs_e[0])).sum(dim=1) + torch.mul(
+            lhs_e[1], self.tanh(rhs_e[1])
+        ).sum(dim=1)
+        # score = torch.mul(lhs_e, self.tanh(t_e)).sum(dim=1)
+        # score = torch.sum(lhs_e[0] * rhs_e[0] + lhs_e[1] * rhs_e[1],1, keepdim=True)
+        # kg_score = score.squeeze()
+        # print('**************************************************')
+        # print(kg_score.shape)
+        # print('**************************************************')
 
         return score
-    
 
     def generate_transE_score1(self, hs, ts, r):
         r"""Calculating scores for triples in KG.
@@ -1302,9 +1410,9 @@ class KGAT(KnowledgeRecommender):
         rhs_e1 = logmap0(rhs_e, c)
 
         kg_score = torch.mul(rhs_e1, self.tanh(res1)).sum(dim=1)
-        #print('___________________________________________________')
-        #print(kg_score.shape)
-        #print('___________________________________________________')
+        # print('___________________________________________________')
+        # print(kg_score.shape)
+        # print('___________________________________________________')
         return kg_score
 
     def generate_transE_score2(self, hs, ts, r):
@@ -1324,9 +1432,9 @@ class KGAT(KnowledgeRecommender):
         t_e = all_embeddings[ts]
         r_e = self.relation_embedding.weight[r]
 
-
-
-        r_trans_w = self.trans_w.weight[r].view(self.embedding_size, self.kg_embedding_size)
+        r_trans_w = self.trans_w.weight[r].view(
+            self.embedding_size, self.kg_embedding_size
+        )
 
         h_e = h_e.double()
         r_trans_w = r_trans_w.double()
@@ -1335,8 +1443,6 @@ class KGAT(KnowledgeRecommender):
         t_e = torch.matmul(t_e, r_trans_w)
 
         kg_score = torch.mul(t_e, self.tanh(h_e + r_e)).sum(dim=1)
-
-
 
         return kg_score
 
@@ -1356,22 +1462,35 @@ class KGAT(KnowledgeRecommender):
         return sample
 
     def update_attentive_A(self):
-        r"""Update the attention matrix using the updated embedding matrix
+        r"""Update the attention matrix using the updated embedding matrix"""
 
-        """
-
-        kg_score_list_1, kg_score_list_2, kg_score_list_3, row_list, col_list = [], [], [], [], []
+        kg_score_list_1, kg_score_list_2, kg_score_list_3, row_list, col_list = (
+            [],
+            [],
+            [],
+            [],
+            [],
+        )
         # To reduce the GPU memory consumption, we calculate the scores of KG triples according to the type of relation
         for rel_idx in range(1, self.n_relations, 1):
             triple_index = torch.where(self.all_rs == rel_idx)
-            kg_score2 = self.generate_transE_score2(self.all_hs[triple_index], self.all_ts[triple_index], rel_idx)
-            kg_score1 = self.generate_transE_score1(self.all_hs[triple_index], self.all_ts[triple_index],
-                                                    self.all_rs[triple_index])
-            kg_score3 = self.generate_transE_score3(self.all_hs[triple_index], self.all_ts[triple_index], self.all_rs[triple_index])
-            #print('oooooooooooooooooooooooooooooooooooooooooooooooooooooo')
-            #print(kg_score2.shape)
-            #print(kg_score3.shape)
-            #print('oooooooooooooooooooooooooooooooooooooooooooooooooooooo')
+            kg_score2 = self.generate_transE_score2(
+                self.all_hs[triple_index], self.all_ts[triple_index], rel_idx
+            )
+            kg_score1 = self.generate_transE_score1(
+                self.all_hs[triple_index],
+                self.all_ts[triple_index],
+                self.all_rs[triple_index],
+            )
+            kg_score3 = self.generate_transE_score3(
+                self.all_hs[triple_index],
+                self.all_ts[triple_index],
+                self.all_rs[triple_index],
+            )
+            # print('oooooooooooooooooooooooooooooooooooooooooooooooooooooo')
+            # print(kg_score2.shape)
+            # print(kg_score3.shape)
+            # print('oooooooooooooooooooooooooooooooooooooooooooooooooooooo')
 
             kg_score_1 = kg_score1
             kg_score_2 = kg_score2
@@ -1387,16 +1506,13 @@ class KGAT(KnowledgeRecommender):
         kg_score2 = torch.cat(kg_score_list_2, dim=0)
         kg_score3 = torch.cat(kg_score_list_3, dim=0)
 
-        #print('111111111111111111111111111111111111111111111111111111111111')
-        #print(kg_score1.shape)
-        #print('111111111111111111111111111111111111111111111111111111111111')
-        #print(kg_score2.shape)
+        # print('111111111111111111111111111111111111111111111111111111111111')
+        # print(kg_score1.shape)
+        # print('111111111111111111111111111111111111111111111111111111111111')
+        # print(kg_score2.shape)
 
-        #print('111111111111111111111111111111111111111111111111111111111111')
-        #print(kg_score3.shape)
-
-
-
+        # print('111111111111111111111111111111111111111111111111111111111111')
+        # print(kg_score3.shape)
 
         row = torch.cat(row_list, dim=0)
         col = torch.cat(col_list, dim=0)
@@ -1446,11 +1562,11 @@ class KGAT(KnowledgeRecommender):
             self.restore_user_e_3, self.restore_entity_e_3 = self.forward_3()
 
         u_embeddings_1 = self.restore_user_e_1[user]
-        i_embeddings_1 = self.restore_entity_e_1[:self.n_items]
+        i_embeddings_1 = self.restore_entity_e_1[: self.n_items]
         u_embeddings_2 = self.restore_user_e_2[user]
-        i_embeddings_2 = self.restore_entity_e_2[:self.n_items]
+        i_embeddings_2 = self.restore_entity_e_2[: self.n_items]
         u_embeddings_3 = self.restore_user_e_3[user]
-        i_embeddings_3 = self.restore_entity_e_3[:self.n_items]
+        i_embeddings_3 = self.restore_entity_e_3[: self.n_items]
 
         scores_1 = torch.matmul(u_embeddings_1, i_embeddings_1.transpose(0, 1))
         scores_2 = torch.matmul(u_embeddings_2, i_embeddings_2.transpose(0, 1))

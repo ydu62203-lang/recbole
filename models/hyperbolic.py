@@ -8,6 +8,7 @@ BALL_EPS = {torch.float32: 4e-3, torch.float64: 1e-5}
 
 # ################# MATH FUNCTIONS ########################
 
+
 class Artanh(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x):
@@ -19,8 +20,8 @@ class Artanh(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_output):
-        input, = ctx.saved_tensors
-        return grad_output / (1 - input ** 2)
+        (input,) = ctx.saved_tensors
+        return grad_output / (1 - input**2)
 
 
 def artanh(x):
@@ -33,6 +34,7 @@ def tanh(x):
 
 # ################# HYP OPS ########################
 
+
 def expmap0(u, c):
     """Exponential map taken at the origin of the Poincare ball with curvature c.
 
@@ -43,7 +45,7 @@ def expmap0(u, c):
     Returns:
         torch.Tensor with tangent points.
     """
-    sqrt_c = c ** 0.5
+    sqrt_c = c**0.5
     u_norm = u.norm(dim=-1, p=2, keepdim=True).clamp_min(MIN_NORM)
     gamma_1 = tanh(sqrt_c * u_norm) * u / (sqrt_c * u_norm)
     return project(gamma_1, c)
@@ -59,7 +61,7 @@ def logmap0(y, c):
     Returns:
         torch.Tensor with hyperbolic points.
     """
-    sqrt_c = c ** 0.5
+    sqrt_c = c**0.5
     y_norm = y.norm(dim=-1, p=2, keepdim=True).clamp_min(MIN_NORM)
     return y / y_norm / sqrt_c * artanh(sqrt_c * y_norm)
 
@@ -76,7 +78,7 @@ def project(x, c):
     """
     norm = x.norm(dim=-1, p=2, keepdim=True).clamp_min(MIN_NORM)
     eps = BALL_EPS[x.dtype]
-    maxnorm = (1 - eps) / (c ** 0.5)
+    maxnorm = (1 - eps) / (c**0.5)
     cond = norm > maxnorm
     projected = x / norm * maxnorm
     return torch.where(cond, projected, x)
@@ -97,11 +99,12 @@ def mobius_add(x, y, c):
     y2 = torch.sum(y * y, dim=-1, keepdim=True)
     xy = torch.sum(x * y, dim=-1, keepdim=True)
     num = (1 + 2 * c * xy + c * y2) * x + (1 - c * x2) * y
-    denom = 1 + 2 * c * xy + c ** 2 * x2 * y2
+    denom = 1 + 2 * c * xy + c**2 * x2 * y2
     return num / denom.clamp_min(MIN_NORM)
 
 
 # ################# HYP DISTANCES ########################
+
 
 def hyp_distance(x, y, c):
     """Hyperbolic distance on the Poincare ball with curvature c.
@@ -114,15 +117,15 @@ def hyp_distance(x, y, c):
     Returns: torch,Tensor with hyperbolic distances, size B x 1 if eval_mode is False
             else B x n_entities matrix with all pairs distances
     """
-    sqrt_c = c ** 0.5
+    sqrt_c = c**0.5
     x2 = torch.sum(x * x, dim=-1, keepdim=True)
 
     y2 = torch.sum(y * y, dim=-1, keepdim=True)
     xy = torch.sum(x * y, dim=-1, keepdim=True)
     c1 = 1 - 2 * c * xy + c * y2
     c2 = 1 - c * x2
-    num = torch.sqrt((c1 ** 2) * x2 + (c2 ** 2) * y2 - (2 * c1 * c2) * xy)
-    denom = 1 - 2 * c * xy + c ** 2 * x2 * y2
+    num = torch.sqrt((c1**2) * x2 + (c2**2) * y2 - (2 * c1 * c2) * xy)
+    denom = 1 - 2 * c * xy + c**2 * x2 * y2
     pairwise_norm = num / denom.clamp_min(MIN_NORM)
     dist = artanh(sqrt_c * pairwise_norm)
     return 2 * dist / sqrt_c
@@ -139,15 +142,15 @@ def hyp_distance_multi_c(x, v, c):
     Return: torch,Tensor with hyperbolic distances, size B x 1 if eval_mode is False
             else B x n_entities matrix with all pairs distances
     """
-    sqrt_c = c ** 0.5
+    sqrt_c = c**0.5
     vnorm = torch.norm(v, p=2, dim=-1, keepdim=True)
     xv = torch.sum(x * v / vnorm, dim=-1, keepdim=True)
     gamma = tanh(sqrt_c * vnorm) / sqrt_c
     x2 = torch.sum(x * x, dim=-1, keepdim=True)
-    c1 = 1 - 2 * c * gamma * xv + c * gamma ** 2
+    c1 = 1 - 2 * c * gamma * xv + c * gamma**2
     c2 = 1 - c * x2
-    num = torch.sqrt((c1 ** 2) * x2 + (c2 ** 2) * (gamma ** 2) - (2 * c1 * c2) * gamma * xv)
-    denom = 1 - 2 * c * gamma * xv + (c ** 2) * (gamma ** 2) * x2
+    num = torch.sqrt((c1**2) * x2 + (c2**2) * (gamma**2) - (2 * c1 * c2) * gamma * xv)
+    denom = 1 - 2 * c * gamma * xv + (c**2) * (gamma**2) * x2
     pairwise_norm = num / denom.clamp_min(MIN_NORM)
     dist = artanh(sqrt_c * pairwise_norm)
     return 2 * dist / sqrt_c

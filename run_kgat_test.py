@@ -1,4 +1,4 @@
-'''
+"""
 from logging import getLogger
 from recbole.config import Config
 from recbole.data import create_dataset, data_preparation
@@ -23,11 +23,11 @@ if __name__ == '__main__':
     config, model, dataset, train_data, valid_data, test_data = load_data_and_model(
     model_file='/root/RecBole-master/RecBole-master/saved/KGAT-Nov-30-2024_17-38-11.pth',
 )
-    
+
     # configurations initialization
     # config = Config(model='KGAT', dataset='ml-1m')
 
-    
+
     # init random seed
     init_seed(config['seed'], config['reproducibility'])
 
@@ -51,7 +51,7 @@ if __name__ == '__main__':
 
     # trainer loading and initialization
     trainer = get_trainer(config['MODEL_TYPE'], config['model'])(config, model)
-    
+
     # resume from break point
     checkpoint_file = '/root/RecBole-master/RecBole-master/saved/KGAT-Nov-30-2024_17-38-11.pth'
     trainer.resume_checkpoint(checkpoint_file)
@@ -62,7 +62,7 @@ if __name__ == '__main__':
     # model evaluation
     test_result = trainer.evaluate(test_data)
     print(test_result)
-'''
+"""
 
 from logging import getLogger
 from recbole.config import Config
@@ -82,20 +82,21 @@ from recbole.utils import (
     get_environment,
 )
 
-if __name__ == '__main__':
+if __name__ == "__main__":
 
     config, model, dataset, train_data, valid_data, test_data = load_data_and_model(
-    model_file='/root/RecBole-master/RecBole-master/saved/KGAT-Nov-30-2024_17-38-11.pth',
-)
+        model_file="/root/RecBole-master/RecBole-master/saved/KGAT-Nov-30-2024_17-38-11.pth",
+    )
 
     # trainer loading and initialization
-    trainer = get_trainer(config['MODEL_TYPE'], config['model'])(config, model)
-
+    trainer = get_trainer(config["MODEL_TYPE"], config["model"])(config, model)
 
     # When calculate ItemCoverage metrics, we need to run this code for set item_nums in eval_collector.
     trainer.eval_collector.data_collect(train_data)
 
     # model evaluation
-    checkpoint_file = '/root/RecBole-master/RecBole-master/saved/KGAT-Nov-30-2024_17-38-11.pth'
+    checkpoint_file = (
+        "/root/RecBole-master/RecBole-master/saved/KGAT-Nov-30-2024_17-38-11.pth"
+    )
     test_result = trainer.evaluate(test_data, model_file=checkpoint_file)
     print(test_result)

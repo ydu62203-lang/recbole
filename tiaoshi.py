@@ -1,5 +1,6 @@
 import torch
 
+
 def check_cuda():
     # 检查 CUDA 是否可用
     cuda_available = torch.cuda.is_available()
@@ -16,6 +17,7 @@ def check_cuda():
         for i in range(num_gpus):
             device_name = torch.cuda.get_device_name(i)
             print(f"Device {i}: {device_name}")
+
 
 if __name__ == "__main__":
     check_cuda()

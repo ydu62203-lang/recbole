@@ -1,4 +1,5 @@
 """Euclidean Knowledge Graph embedding models where embeddings are in real space."""
+
 import numpy as np
 import torch
 from torch import nn
@@ -17,10 +18,21 @@ class BaseE(KGModel):
     """
 
     def __init__(self, args):
-        super(BaseE, self).__init__(args.sizes, args.rank, args.dropout, args.gamma, args.dtype, args.bias,
-                                    args.init_size)
-        self.entity.weight.data = self.init_size * torch.randn((self.sizes[0], self.rank), dtype=self.data_type)
-        self.rel.weight.data = self.init_size * torch.randn((self.sizes[1], self.rank), dtype=self.data_type)
+        super(BaseE, self).__init__(
+            args.sizes,
+            args.rank,
+            args.dropout,
+            args.gamma,
+            args.dtype,
+            args.bias,
+            args.init_size,
+        )
+        self.entity.weight.data = self.init_size * torch.randn(
+            (self.sizes[0], self.rank), dtype=self.data_type
+        )
+        self.rel.weight.data = self.init_size * torch.randn(
+            (self.sizes[1], self.rank), dtype=self.data_type
+        )
 
     def get_rhs(self, queries, eval_mode):
         """Get embeddings and biases of target entities."""
@@ -37,7 +49,7 @@ class BaseE(KGModel):
             else:
                 score = torch.sum(lhs_e * rhs_e, dim=-1, keepdim=True)
         else:
-            score = - euc_sqdistance(lhs_e, rhs_e, eval_mode)
+            score = -euc_sqdistance(lhs_e, rhs_e, eval_mode)
         return score
 
 
@@ -65,7 +77,9 @@ class CP(BaseE):
 
     def get_queries(self, queries: torch.Tensor):
         """Compute embedding and biases of queries."""
-        return self.entity(queries[:, 0]) * self.rel(queries[:, 1]), self.bh(queries[:, 0])
+        return self.entity(queries[:, 0]) * self.rel(queries[:, 1]), self.bh(
+            queries[:, 0]
+        )
 
 
 class MurE(BaseE):
@@ -74,12 +88,16 @@ class MurE(BaseE):
     def __init__(self, args):
         super(MurE, self).__init__(args)
         self.rel_diag = nn.Embedding(self.sizes[1], self.rank)
-        self.rel_diag.weight.data = 2 * torch.rand((self.sizes[1], self.rank), dtype=self.data_type) - 1.0
+        self.rel_diag.weight.data = (
+            2 * torch.rand((self.sizes[1], self.rank), dtype=self.data_type) - 1.0
+        )
         self.sim = "dist"
 
     def get_queries(self, queries: torch.Tensor):
         """Compute embedding and biases of queries."""
-        lhs_e = self.rel_diag(queries[:, 1]) * self.entity(queries[:, 0]) + self.rel(queries[:, 1])
+        lhs_e = self.rel_diag(queries[:, 1]) * self.entity(queries[:, 0]) + self.rel(
+            queries[:, 1]
+        )
         lhs_biases = self.bh(queries[:, 0])
         return lhs_e, lhs_biases
 
@@ -90,12 +108,16 @@ class RotE(BaseE):
     def __init__(self, args):
         super(RotE, self).__init__(args)
         self.rel_diag = nn.Embedding(self.sizes[1], self.rank)
-        self.rel_diag.weight.data = 2 * torch.rand((self.sizes[1], self.rank), dtype=self.data_type) - 1.0
+        self.rel_diag.weight.data = (
+            2 * torch.rand((self.sizes[1], self.rank), dtype=self.data_type) - 1.0
+        )
         self.sim = "dist"
 
     def get_queries(self, queries: torch.Tensor):
         """Compute embedding and biases of queries."""
-        lhs_e = givens_rotations(self.rel_diag(queries[:, 1]), self.entity(queries[:, 0])) + self.rel(queries[:, 1])
+        lhs_e = givens_rotations(
+            self.rel_diag(queries[:, 1]), self.entity(queries[:, 0])
+        ) + self.rel(queries[:, 1])
         lhs_biases = self.bh(queries[:, 0])
         return lhs_e, lhs_biases
 
@@ -106,12 +128,16 @@ class RefE(BaseE):
     def __init__(self, args):
         super(RefE, self).__init__(args)
         self.rel_diag = nn.Embedding(self.sizes[1], self.rank)
-        self.rel_diag.weight.data = 2 * torch.rand((self.sizes[1], self.rank), dtype=self.data_type) - 1.0
+        self.rel_diag.weight.data = (
+            2 * torch.rand((self.sizes[1], self.rank), dtype=self.data_type) - 1.0
+        )
         self.sim = "dist"
 
     def get_queries(self, queries):
         """Compute embedding and biases of queries."""
-        lhs = givens_reflection(self.rel_diag(queries[:, 1]), self.entity(queries[:, 0]))
+        lhs = givens_reflection(
+            self.rel_diag(queries[:, 1]), self.entity(queries[:, 0])
+        )
         rel = self.rel(queries[:, 1])
         lhs_biases = self.bh(queries[:, 0])
         return lhs + rel, lhs_biases
@@ -126,16 +152,20 @@ class AttE(BaseE):
 
         # reflection
         self.ref = nn.Embedding(self.sizes[1], self.rank)
-        self.ref.weight.data = 2 * torch.rand((self.sizes[1], self.rank), dtype=self.data_type) - 1.0
+        self.ref.weight.data = (
+            2 * torch.rand((self.sizes[1], self.rank), dtype=self.data_type) - 1.0
+        )
 
         # rotation
         self.rot = nn.Embedding(self.sizes[1], self.rank)
-        self.rot.weight.data = 2 * torch.rand((self.sizes[1], self.rank), dtype=self.data_type) - 1.0
+        self.rot.weight.data = (
+            2 * torch.rand((self.sizes[1], self.rank), dtype=self.data_type) - 1.0
+        )
 
         # attention
         self.context_vec = nn.Embedding(self.sizes[1], self.rank)
         self.act = nn.Softmax(dim=1)
-        self.scale = torch.Tensor([1. / np.sqrt(self.rank)]).cuda()
+        self.scale = torch.Tensor([1.0 / np.sqrt(self.rank)]).cuda()
 
     def get_reflection_queries(self, queries):
         lhs_ref_e = givens_reflection(

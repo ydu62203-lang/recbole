@@ -184,7 +184,6 @@ class KnowledgeBasedDataset(Dataset):
         for ent in illegal_ent:
             del self.entity2item[ent]
 
-
     def _download(self):
         super()._download()
 

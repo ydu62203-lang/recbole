@@ -717,15 +717,16 @@ class KGATTrainer(Trainer):
         super(KGATTrainer, self).__init__(config, model)
 
     def _train_epoch(self, train_data, epoch_idx, loss_func=None, show_progress=False):
-        
-
 
         # train rs_h
         if not self.config["single_spec"]:
             train_data.knowledge_shuffle(epoch_idx)
         train_data.set_mode(KGDataLoaderState.RS)
         rs_ho_loss = super()._train_epoch(
-            train_data, epoch_idx,loss_func=self.model.calculate_h_loss, show_progress=show_progress
+            train_data,
+            epoch_idx,
+            loss_func=self.model.calculate_h_loss,
+            show_progress=show_progress,
         )
 
         # train kg_h
@@ -742,7 +743,10 @@ class KGATTrainer(Trainer):
             train_data.knowledge_shuffle(epoch_idx)
         train_data.set_mode(KGDataLoaderState.RS)
         rs_ho_loss_o = super()._train_epoch(
-            train_data, epoch_idx,loss_func=self.model.calculate_o_loss, show_progress=show_progress
+            train_data,
+            epoch_idx,
+            loss_func=self.model.calculate_o_loss,
+            show_progress=show_progress,
         )
 
         # train kg_o
@@ -759,7 +763,10 @@ class KGATTrainer(Trainer):
             train_data.knowledge_shuffle(epoch_idx)
         train_data.set_mode(KGDataLoaderState.RS)
         rs_ho_loss_e = super()._train_epoch(
-            train_data, epoch_idx,loss_func=self.model.calculate_e_loss, show_progress=show_progress
+            train_data,
+            epoch_idx,
+            loss_func=self.model.calculate_e_loss,
+            show_progress=show_progress,
         )
 
         # train kg_e
@@ -771,14 +778,19 @@ class KGATTrainer(Trainer):
             show_progress=show_progress,
         )
 
-
-
         # update A
         self.model.eval()
         with torch.no_grad():
             self.model.update_attentive_A()
 
-        return rs_ho_loss, kg_total_loss,rs_ho_loss_o, kg_total_loss_o, rs_ho_loss_e, kg_total_loss_e
+        return (
+            rs_ho_loss,
+            kg_total_loss,
+            rs_ho_loss_o,
+            kg_total_loss_o,
+            rs_ho_loss_e,
+            kg_total_loss_e,
+        )
 
 
 class PretrainTrainer(Trainer):

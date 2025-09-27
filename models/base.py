@@ -1,4 +1,5 @@
 """Base Knowledge Graph embedding model."""
+
 from abc import ABC, abstractmethod
 
 import torch
@@ -25,7 +26,7 @@ class KGModel(nn.Module, ABC):
     def __init__(self, sizes, rank, dropout, gamma, data_type, bias, init_size):
         """Initialize KGModel."""
         super(KGModel, self).__init__()
-        if data_type == 'double':
+        if data_type == "double":
             self.data_type = torch.double
         else:
             self.data_type = torch.float
@@ -101,9 +102,9 @@ class KGModel(nn.Module, ABC):
         lhs_e, lhs_biases = lhs
         rhs_e, rhs_biases = rhs
         score = self.similarity_score(lhs_e, rhs_e, eval_mode)
-        if self.bias == 'constant':
+        if self.bias == "constant":
             return self.gamma.item() + score
-        elif self.bias == 'learn':
+        elif self.bias == "learn":
             if eval_mode:
                 return lhs_biases + rhs_biases.t() + score
             else:
@@ -163,7 +164,7 @@ class KGModel(nn.Module, ABC):
             b_begin = 0
             candidates = self.get_rhs(queries, eval_mode=True)
             while b_begin < len(queries):
-                these_queries = queries[b_begin:b_begin + batch_size].cuda()
+                these_queries = queries[b_begin : b_begin + batch_size].cuda()
 
                 q = self.get_queries(these_queries)
                 rhs = self.get_rhs(these_queries, eval_mode=False)
@@ -176,7 +177,7 @@ class KGModel(nn.Module, ABC):
                     filter_out = filters[(query[0].item(), query[1].item())]
                     filter_out += [queries[b_begin + i, 2].item()]
                     scores[i, torch.LongTensor(filter_out)] = -1e6
-                ranks[b_begin:b_begin + batch_size] += torch.sum(
+                ranks[b_begin : b_begin + batch_size] += torch.sum(
                     (scores >= targets).float(), dim=1
                 ).cpu()
                 b_begin += batch_size
@@ -184,7 +185,7 @@ class KGModel(nn.Module, ABC):
 
     def compute_metrics(self, examples, filters, batch_size=500):
         """Compute ranking-based evaluation metrics.
-    
+
         Args:
             examples: torch.LongTensor of size n_examples x 3 containing triples' indices
             filters: Dict with entities to skip per query for evaluation in the filtered setting
@@ -206,10 +207,16 @@ class KGModel(nn.Module, ABC):
                 q[:, 1] += self.sizes[1] // 2
             ranks = self.get_ranking(q, filters[m], batch_size=batch_size)
             mean_rank[m] = torch.mean(ranks).item()
-            mean_reciprocal_rank[m] = torch.mean(1. / ranks).item()
-            hits_at[m] = torch.FloatTensor((list(map(
-                lambda x: torch.mean((ranks <= x).float()).item(),
-                (1, 3, 10)
-            ))))
+            mean_reciprocal_rank[m] = torch.mean(1.0 / ranks).item()
+            hits_at[m] = torch.FloatTensor(
+                (
+                    list(
+                        map(
+                            lambda x: torch.mean((ranks <= x).float()).item(),
+                            (1, 3, 10),
+                        )
+                    )
+                )
+            )
 
         return mean_rank, mean_reciprocal_rank, hits_at

@@ -26,8 +26,7 @@ from recbole.utils import InputType
 
 
 class Aggregator(nn.Module):
-    """ GNN Aggregator layer
-    """
+    """GNN Aggregator layer"""
 
     def __init__(self, input_dim, output_dim, dropout, aggregator_type):
         super(Aggregator, self).__init__()
@@ -38,11 +37,11 @@ class Aggregator(nn.Module):
 
         self.message_dropout = nn.Dropout(dropout)
 
-        if self.aggregator_type == 'gcn':
+        if self.aggregator_type == "gcn":
             self.W = nn.Linear(self.input_dim, self.output_dim)
-        elif self.aggregator_type == 'graphsage':
+        elif self.aggregator_type == "graphsage":
             self.W = nn.Linear(self.input_dim * 2, self.output_dim)
-        elif self.aggregator_type == 'bi':
+        elif self.aggregator_type == "bi":
             self.W1 = nn.Linear(self.input_dim, self.output_dim)
             self.W2 = nn.Linear(self.input_dim, self.output_dim)
         else:
@@ -53,11 +52,13 @@ class Aggregator(nn.Module):
     def forward(self, norm_matrix, ego_embeddings):
         side_embeddings = torch.sparse.mm(norm_matrix, ego_embeddings)
 
-        if self.aggregator_type == 'gcn':
+        if self.aggregator_type == "gcn":
             ego_embeddings = self.activation(self.W(ego_embeddings + side_embeddings))
-        elif self.aggregator_type == 'graphsage':
-            ego_embeddings = self.activation(self.W(torch.cat([ego_embeddings, side_embeddings], dim=1)))
-        elif self.aggregator_type == 'bi':
+        elif self.aggregator_type == "graphsage":
+            ego_embeddings = self.activation(
+                self.W(torch.cat([ego_embeddings, side_embeddings], dim=1))
+            )
+        elif self.aggregator_type == "bi":
             add_embeddings = ego_embeddings + side_embeddings
             sum_embeddings = self.activation(self.W1(add_embeddings))
             bi_embeddings = torch.mul(ego_embeddings, side_embeddings)
@@ -83,43 +84,67 @@ class KGAT(KnowledgeRecommender):
         super(KGAT, self).__init__(config, dataset)
 
         # load dataset info
-        self.ckg = dataset.ckg_graph(form='dgl', value_field='relation_id')
-        self.all_hs = torch.LongTensor(dataset.ckg_graph(form='coo', value_field='relation_id').row).to(self.device)
-        self.all_ts = torch.LongTensor(dataset.ckg_graph(form='coo', value_field='relation_id').col).to(self.device)
-        self.all_rs = torch.LongTensor(dataset.ckg_graph(form='coo', value_field='relation_id').data).to(self.device)
-        self.matrix_size = torch.Size([self.n_users + self.n_entities, self.n_users + self.n_entities])
+        self.ckg = dataset.ckg_graph(form="dgl", value_field="relation_id")
+        self.all_hs = torch.LongTensor(
+            dataset.ckg_graph(form="coo", value_field="relation_id").row
+        ).to(self.device)
+        self.all_ts = torch.LongTensor(
+            dataset.ckg_graph(form="coo", value_field="relation_id").col
+        ).to(self.device)
+        self.all_rs = torch.LongTensor(
+            dataset.ckg_graph(form="coo", value_field="relation_id").data
+        ).to(self.device)
+        self.matrix_size = torch.Size(
+            [self.n_users + self.n_entities, self.n_users + self.n_entities]
+        )
 
         # load parameters info
-        self.embedding_size = config['embedding_size']
-        self.kg_embedding_size = config['kg_embedding_size']
-        self.layers = [self.embedding_size] + config['layers']
-        self.aggregator_type = config['aggregator_type']
-        self.mess_dropout = config['mess_dropout']
-        self.reg_weight = config['reg_weight']
+        self.embedding_size = config["embedding_size"]
+        self.kg_embedding_size = config["kg_embedding_size"]
+        self.layers = [self.embedding_size] + config["layers"]
+        self.aggregator_type = config["aggregator_type"]
+        self.mess_dropout = config["mess_dropout"]
+        self.reg_weight = config["reg_weight"]
 
         # generate intermediate data
-        self.A_in = self.init_graph()  # init the attention matrix by the structure of ckg
+        self.A_in = (
+            self.init_graph()
+        )  # init the attention matrix by the structure of ckg
 
         affine = True
         self.projection_head = torch.nn.ModuleList()
         inner_size = sum(self.layers)
         print("inner size:", inner_size)
-        self.projection_head.append(torch.nn.Linear(inner_size, inner_size * 4, bias=False))
-        self.projection_head.append(torch.nn.BatchNorm1d(inner_size * 4, eps=1e-12, affine=affine))
-        self.projection_head.append(torch.nn.Linear(inner_size * 4, inner_size, bias=False))
-        self.projection_head.append(torch.nn.BatchNorm1d(inner_size, eps=1e-12, affine=affine))
+        self.projection_head.append(
+            torch.nn.Linear(inner_size, inner_size * 4, bias=False)
+        )
+        self.projection_head.append(
+            torch.nn.BatchNorm1d(inner_size * 4, eps=1e-12, affine=affine)
+        )
+        self.projection_head.append(
+            torch.nn.Linear(inner_size * 4, inner_size, bias=False)
+        )
+        self.projection_head.append(
+            torch.nn.BatchNorm1d(inner_size, eps=1e-12, affine=affine)
+        )
         self.mode = 0
-
-
 
         # define layers and loss
         self.user_embedding = nn.Embedding(self.n_users, self.embedding_size)
         self.entity_embedding = nn.Embedding(self.n_entities, self.embedding_size)
         self.relation_embedding = nn.Embedding(self.n_relations, self.kg_embedding_size)
-        self.trans_w = nn.Embedding(self.n_relations, self.embedding_size * self.kg_embedding_size)
+        self.trans_w = nn.Embedding(
+            self.n_relations, self.embedding_size * self.kg_embedding_size
+        )
         self.aggregator_layers = nn.ModuleList()
-        for idx, (input_dim, output_dim) in enumerate(zip(self.layers[:-1], self.layers[1:])):
-            self.aggregator_layers.append(Aggregator(input_dim, output_dim, self.mess_dropout, self.aggregator_type))
+        for idx, (input_dim, output_dim) in enumerate(
+            zip(self.layers[:-1], self.layers[1:])
+        ):
+            self.aggregator_layers.append(
+                Aggregator(
+                    input_dim, output_dim, self.mess_dropout, self.aggregator_type
+                )
+            )
         self.tanh = nn.Tanh()
         self.mf_loss = BPRLoss()
         self.reg_loss = EmbLoss()
@@ -129,15 +154,18 @@ class KGAT(KnowledgeRecommender):
 
         # parameters initialization
         self.apply(xavier_normal_initialization)
-        self.other_parameter_name = ['restore_user_e', 'restore_entity_e']
-        
-        #添加参数
+        self.other_parameter_name = ["restore_user_e", "restore_entity_e"]
+
+        # 添加参数
         self.data_type = torch.float
         self.rank = self.embedding_size
-        self.noise_u = torch.randn((self.n_users,self.rank*2), dtype=self.data_type).to(self.device)
-        self.noise_p = torch.randn((self.n_entities, self.rank*2), dtype=self.data_type).to(self.device)
+        self.noise_u = torch.randn(
+            (self.n_users, self.rank * 2), dtype=self.data_type
+        ).to(self.device)
+        self.noise_p = torch.randn(
+            (self.n_entities, self.rank * 2), dtype=self.data_type
+        ).to(self.device)
         self.noise_norm = 0.01
-        
 
     def init_graph(self):
         r"""Get the initial attention matrix through the collaborative knowledge graph
@@ -146,14 +174,20 @@ class KGAT(KnowledgeRecommender):
             torch.sparse.FloatTensor: Sparse tensor of the attention matrix
         """
         import dgl
+
         adj_list = []
         for rel_type in range(1, self.n_relations, 1):
-            edge_idxs = self.ckg.filter_edges(lambda edge: edge.data['relation_id'] == rel_type)
-            sub_graph = dgl.edge_subgraph(self.ckg, edge_idxs, preserve_nodes=True). \
-                adjacency_matrix(transpose=False, scipy_fmt='coo').astype('float')
+            edge_idxs = self.ckg.filter_edges(
+                lambda edge: edge.data["relation_id"] == rel_type
+            )
+            sub_graph = (
+                dgl.edge_subgraph(self.ckg, edge_idxs, preserve_nodes=True)
+                .adjacency_matrix(transpose=False, scipy_fmt="coo")
+                .astype("float")
+            )
             rowsum = np.array(sub_graph.sum(1))
             d_inv = np.power(rowsum, -1).flatten()
-            d_inv[np.isinf(d_inv)] = 0.
+            d_inv[np.isinf(d_inv)] = 0.0
             d_mat_inv = sp.diags(d_inv)
             norm_adj = d_mat_inv.dot(sub_graph).tocoo()
             adj_list.append(norm_adj)
@@ -178,7 +212,9 @@ class KGAT(KnowledgeRecommender):
             norm_embeddings = F.normalize(ego_embeddings, p=2, dim=1)
             embeddings_list.append(norm_embeddings)
         kgat_all_embeddings = torch.cat(embeddings_list, dim=1)
-        user_all_embeddings, entity_all_embeddings = torch.split(kgat_all_embeddings, [self.n_users, self.n_entities])
+        user_all_embeddings, entity_all_embeddings = torch.split(
+            kgat_all_embeddings, [self.n_users, self.n_entities]
+        )
         return user_all_embeddings, entity_all_embeddings
 
     def mask_correlated_samples(self, batch_size):
@@ -190,13 +226,14 @@ class KGAT(KnowledgeRecommender):
             mask[batch_size + i, i] = 0
         return mask
 
-
     def _get_kg_embedding(self, h, r, pos_t, neg_t):
         h_e = self.entity_embedding(h).unsqueeze(1)
         pos_t_e = self.entity_embedding(pos_t).unsqueeze(1)
         neg_t_e = self.entity_embedding(neg_t).unsqueeze(1)
         r_e = self.relation_embedding(r)
-        r_trans_w = self.trans_w(r).view(r.size(0), self.embedding_size, self.kg_embedding_size)
+        r_trans_w = self.trans_w(r).view(
+            r.size(0), self.embedding_size, self.kg_embedding_size
+        )
 
         h_e = torch.bmm(h_e, r_trans_w).squeeze(1)
         pos_t_e = torch.bmm(pos_t_e, r_trans_w).squeeze(1)
@@ -204,40 +241,42 @@ class KGAT(KnowledgeRecommender):
 
         return h_e, r_e, pos_t_e, neg_t_e
 
-    def cts_loss(self, z_i, z_j, temp, batch_size): #B * D    B * D
-        
+    def cts_loss(self, z_i, z_j, temp, batch_size):  # B * D    B * D
+
         N = 2 * batch_size
-    
-        z = torch.cat((z_i, z_j), dim=0)   #2B * D  
-    
-        sim = torch.mm(z, z.T) / temp   # 2B * 2B
-    
-        sim_i_j = torch.diag(sim, batch_size)    #B*1
-        sim_j_i = torch.diag(sim, -batch_size)   #B*1
-    
+
+        z = torch.cat((z_i, z_j), dim=0)  # 2B * D
+
+        sim = torch.mm(z, z.T) / temp  # 2B * 2B
+
+        sim_i_j = torch.diag(sim, batch_size)  # B*1
+        sim_j_i = torch.diag(sim, -batch_size)  # B*1
+
         positive_samples = torch.cat((sim_i_j, sim_j_i), dim=0).reshape(N, 1)
 
         mask = self.mask_correlated_samples(batch_size)
 
         negative_samples = sim[mask].reshape(N, -1)
-    
+
         labels = torch.zeros(N).to(positive_samples.device).long()
         logits = torch.cat((positive_samples, negative_samples), dim=1)  # N * C
         loss = self.ce_loss(logits, labels)
         return loss
 
     def projection_head_map(self, state, mode):
-        for i, l in enumerate(self.projection_head): # 0: Linear 1: BN (relu)  2: Linear 3:BN (relu)
+        for i, l in enumerate(
+            self.projection_head
+        ):  # 0: Linear 1: BN (relu)  2: Linear 3:BN (relu)
             if i % 2 != 0:
                 if mode == 0:
-                    l.train()   # set BN to train mode: use a learned mean and variance.
+                    l.train()  # set BN to train mode: use a learned mean and variance.
                 else:
-                    l.eval()   # set BN to eval mode: use a accumulated mean and variance.
+                    l.eval()  # set BN to eval mode: use a accumulated mean and variance.
             state = l(state)
             if i % 2 != 0:
                 state = F.relu(state)
         return state
- 
+
     def calculate_loss(self, interaction):
         if self.restore_user_e is not None or self.restore_entity_e is not None:
             self.restore_user_e, self.restore_entity_e = None, None
@@ -257,59 +296,70 @@ class KGAT(KnowledgeRecommender):
         mf_loss = self.mf_loss(pos_scores, neg_scores)
         reg_loss = self.reg_loss(u_embeddings, pos_embeddings, neg_embeddings)
 
-        
-        #引入边丢弃对比学习
-        #u-p对比学习
+        # 引入边丢弃对比学习
+        # u-p对比学习
         u_embeddings = user_all_embeddings[user]
         pos_embeddings = entity_all_embeddings[pos_item]
         neg_embeddings = entity_all_embeddings[neg_item]
-        
+
         u_embeddings = self.projection_head_map(u_embeddings, self.mode)
         pos_embeddings = self.projection_head_map(pos_embeddings, 1 - self.mode)
-        
-        ui_cts_loss = self.cts_loss(u_embeddings, pos_embeddings, temp=1.0,
-                                    batch_size=u_embeddings.shape[0])
-         
-        #引入对抗噪声
+
+        ui_cts_loss = self.cts_loss(
+            u_embeddings, pos_embeddings, temp=1.0, batch_size=u_embeddings.shape[0]
+        )
+
+        # 引入对抗噪声
         # u-p对抗学习
-        #model.zero_grad()
+        # model.zero_grad()
         u_embeddings.retain_grad()
         pos_embeddings.retain_grad()
-        
+
         ui_cts_loss.backward(retain_graph=True)
         u_unnormalized_noise_a = u_embeddings.grad.clone().detach()
-        p_unnormalized_noise_b = pos_embeddings.grad.clone().detach()  
-        
-        #噪声归一化
-        u_norm_a = u_unnormalized_noise_a.norm(p=2, dim=-1)
-        u_normalized_noise_a = u_unnormalized_noise_a / (u_norm_a.unsqueeze(dim=-1) + 1e-10)  # add 1e-10 to avoid NaN
-        
-        p_norm_b = p_unnormalized_noise_b.norm(p=2, dim=-1)
-        p_normalized_noise_b = p_unnormalized_noise_b / (p_norm_b.unsqueeze(dim=-1) + 1e-10)  # add 1e-10 to avoid NaN
-        
-        self.noise_u = self.noise_norm * u_normalized_noise_a
-        self.noise_p = self.noise_norm * p_normalized_noise_b  
+        p_unnormalized_noise_b = pos_embeddings.grad.clone().detach()
 
-        
+        # 噪声归一化
+        u_norm_a = u_unnormalized_noise_a.norm(p=2, dim=-1)
+        u_normalized_noise_a = u_unnormalized_noise_a / (
+            u_norm_a.unsqueeze(dim=-1) + 1e-10
+        )  # add 1e-10 to avoid NaN
+
+        p_norm_b = p_unnormalized_noise_b.norm(p=2, dim=-1)
+        p_normalized_noise_b = p_unnormalized_noise_b / (
+            p_norm_b.unsqueeze(dim=-1) + 1e-10
+        )  # add 1e-10 to avoid NaN
+
+        self.noise_u = self.noise_norm * u_normalized_noise_a
+        self.noise_p = self.noise_norm * p_normalized_noise_b
+
         # u-p对抗学习
-        user_all_embeddings_u, entity_all_embeddings_p = user_all_embeddings, entity_all_embeddings
+        user_all_embeddings_u, entity_all_embeddings_p = (
+            user_all_embeddings,
+            entity_all_embeddings,
+        )
         gan_u_cts_embedding = user_all_embeddings_u[user]
         gan_p_cts_embedding = entity_all_embeddings_p[pos_item]
         gan_u_cts_embedding = gan_u_cts_embedding + self.noise_u
         gan_p_cts_embedding = gan_p_cts_embedding + self.noise_p
-        
+
         gan_u_cts_embedding = self.projection_head_map(gan_u_cts_embedding, self.mode)
-        gan_p_cts_embedding = self.projection_head_map(gan_p_cts_embedding, 1 - self.mode)
-        #计算对抗噪声的对比学习损失
-        ui_cts_loss1 = self.cts_loss(gan_u_cts_embedding, gan_p_cts_embedding, temp=1.0,
-                                    batch_size=u_embeddings.shape[0])
+        gan_p_cts_embedding = self.projection_head_map(
+            gan_p_cts_embedding, 1 - self.mode
+        )
+        # 计算对抗噪声的对比学习损失
+        ui_cts_loss1 = self.cts_loss(
+            gan_u_cts_embedding,
+            gan_p_cts_embedding,
+            temp=1.0,
+            batch_size=u_embeddings.shape[0],
+        )
         # projection_head_map函数的模式切换
         self.mode = 1 - self.mode
-        
+
         loss = mf_loss + self.reg_weight * reg_loss + 0.01 * ui_cts_loss1
 
         return loss
-        
 
     def calculate_kg_loss(self, interaction):
         r"""Calculate the training loss for a batch data of KG.
@@ -355,7 +405,9 @@ class KGAT(KnowledgeRecommender):
         h_e = all_embeddings[hs]
         t_e = all_embeddings[ts]
         r_e = self.relation_embedding.weight[r]
-        r_trans_w = self.trans_w.weight[r].view(self.embedding_size, self.kg_embedding_size)
+        r_trans_w = self.trans_w.weight[r].view(
+            self.embedding_size, self.kg_embedding_size
+        )
 
         h_e = torch.matmul(h_e, r_trans_w)
         t_e = torch.matmul(t_e, r_trans_w)
@@ -380,15 +432,15 @@ class KGAT(KnowledgeRecommender):
         return sample
 
     def update_attentive_A(self):
-        r"""Update the attention matrix using the updated embedding matrix
-
-        """
+        r"""Update the attention matrix using the updated embedding matrix"""
 
         kg_score_list, row_list, col_list = [], [], []
         # To reduce the GPU memory consumption, we calculate the scores of KG triples according to the type of relation
         for rel_idx in range(1, self.n_relations, 1):
             triple_index = torch.where(self.all_rs == rel_idx)
-            kg_score = self.generate_transE_score(self.all_hs[triple_index], self.all_ts[triple_index], rel_idx)
+            kg_score = self.generate_transE_score(
+                self.all_hs[triple_index], self.all_ts[triple_index], rel_idx
+            )
             row_list.append(self.all_hs[triple_index])
             col_list.append(self.all_ts[triple_index])
             kg_score_list.append(kg_score)
@@ -399,10 +451,8 @@ class KGAT(KnowledgeRecommender):
         # Current PyTorch version does not support softmax on SparseCUDA, temporarily move to CPU to calculate softmax
         A_in = torch.sparse.FloatTensor(indices, kg_score, self.matrix_size).cpu()
         A_in = torch.sparse.softmax(A_in, dim=1).to(self.device)
-  
-        self.A_in = A_in
 
-        
+        self.A_in = A_in
 
     def predict(self, interaction):
         user = interaction[self.USER_ID]
@@ -420,7 +470,7 @@ class KGAT(KnowledgeRecommender):
         if self.restore_user_e is None or self.restore_entity_e is None:
             self.restore_user_e, self.restore_entity_e = self.forward()
         u_embeddings = self.restore_user_e[user]
-        i_embeddings = self.restore_entity_e[:self.n_items]
+        i_embeddings = self.restore_entity_e[: self.n_items]
 
         scores = torch.matmul(u_embeddings, i_embeddings.transpose(0, 1))
 
